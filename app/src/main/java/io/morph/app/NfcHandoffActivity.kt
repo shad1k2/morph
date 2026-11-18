@@ -8,6 +8,7 @@ import android.nfc.Tag
 import android.nfc.tech.Ndef
 import android.os.Bundle
 import android.provider.Settings
+import android.util.Log
 import androidx.activity.ComponentActivity
 
 /**
@@ -32,6 +33,12 @@ class NfcHandoffActivity : ComponentActivity() {
 
         val peer = NfcHandoff.decodeUri(intent.data)
             ?: NfcHandoff.decodeMessage(fromExtras ?: fromTag)
+
+        Log.d(
+            "MORPH",
+            "NFC handoff intent: ${intent.action} data=${intent.data} " +
+                "records=${(fromExtras ?: fromTag)?.records?.size ?: 0} peer=${peer?.name}",
+        )
 
         if (peer != null) {
             MorphEngine.showNfcReady(this, peer)
