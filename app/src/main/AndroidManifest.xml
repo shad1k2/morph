@@ -28,11 +28,14 @@
             </intent-filter>
         </activity>
 
+        <!-- Own (empty) task so finishing it reveals the app the user came from
+             instead of bringing MORPH's own task to the front. -->
         <activity
             android:name=".DropTriggerActivity"
             android:excludeFromRecents="true"
             android:exported="false"
             android:noHistory="true"
+            android:taskAffinity="io.morph.app.drop"
             android:theme="@style/Theme.Morph.Invisible" />
 
         <service

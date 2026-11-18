@@ -91,9 +91,16 @@ object MorphEngine {
         private set
     var selfTest by mutableStateOf<String?>(null)
         private set
+    var lastSaved by mutableStateOf<String?>(null)
+        private set
 
     /** Local TCP port other phones connect to. */
     val port: Int get() = localPort
+
+    private var includeSelfInDiscovery = false
+    private var e2eAutoAccept = false
+    private var e2eHost: String? = null
+    private var selfPeer: CompletableDeferred<Peer>? = null
 
     private var appContext: Context? = null
     private var serverSocket: ServerSocket? = null
@@ -232,31 +239,7 @@ object MorphEngine {
                     )
                 )
 
-                Socket().use { socket ->
-                    socket.connect(InetSocketAddress(peer.host, peer.port), 8_000)
-                    socket.soTimeout = 30_000
-                    val link = DropLink(
-                        socket.getInputStream(),
-                        socket.getOutputStream(),
-                        Role.SENDER,
-                    )
-                    link.handshake(localCapabilities())
-
-                    val entry = FileEntry(1u, prepared.size, prepared.mime, prepared.name, prepared.sha256)
-                    val manifest = Manifest(listOf(entry))
-                    link.sendOffer(manifest)
-
-                    if (!link.awaitAccept()) throw IOException("declined by ${peer.name}")
-
-                    prepared.file.inputStream().use { input ->
-                        link.sendFile(entry, input) { sent ->
-                            progress(ctx, sent.toFloat() / prepared.size.coerceAtLeast(1))
-                        }
-                    }
-
-                    link.sendDone(manifest.manifestHash())
-                    if (!link.awaitAck()) throw IOException("receiver rejected the file")
-                }
+                transfer(ctx, peer.name, peer.host, peer.port, prepared)
 
                 publish(
                     ctx,
@@ -274,6 +257,118 @@ object MorphEngine {
                 if (drop?.kind == DropKind.OUTGOING) publish(ctx, null)
             } finally {
                 prepared?.file?.delete()
+            }
+        }
+    }
+
+    /** One SENDER-side DROP/1 conversation over a real TCP socket. */
+    private fun transfer(
+        ctx: Context,
+        peerName: String,
+        host: String,
+        port: Int,
+        prepared: Prepared,
+    ) {
+        Socket().use { socket ->
+            socket.connect(InetSocketAddress(host, port), 8_000)
+            socket.soTimeout = 30_000
+            val link = DropLink(socket.getInputStream(), socket.getOutputStream(), Role.SENDER)
+            link.handshake(localCapabilities())
+
+            val entry = FileEntry(1u, prepared.size, prepared.mime, prepared.name, prepared.sha256)
+            val manifest = Manifest(listOf(entry))
+            link.sendOffer(manifest)
+
+            if (!link.awaitAccept()) throw IOException("declined by $peerName")
+
+            prepared.file.inputStream().use { input ->
+                link.sendFile(entry, input) { sent ->
+                    progress(ctx, sent.toFloat() / prepared.size.coerceAtLeast(1))
+                }
+            }
+
+            link.sendDone(manifest.manifestHash())
+            if (!link.awaitAck()) throw IOException("receiver rejected the file")
+        }
+    }
+
+    /**
+     * Full local round trip used by the diagnostics button: advertise over mDNS,
+     * discover and resolve our own service, then send a generated file to the
+     * receiver through the real TCP + crypto + MediaStore path.
+     */
+    fun runE2E(context: Context) {
+        val ctx = context.applicationContext
+        start(ctx)
+        scope.launch {
+            var prepared: Prepared? = null
+            try {
+                selfTest = "E2E: advertising and discovering…"
+                lastSaved = null
+                val ownName = TAG_NAME + deviceName()
+                val waiter = CompletableDeferred<Peer>()
+                selfPeer = waiter
+                includeSelfInDiscovery = true
+                refreshDiscovery()
+
+                val peer = withTimeoutOrNull(15_000) { waiter.await() }
+                if (peer == null) {
+                    selfTest = "E2E failed: mDNS did not resolve this device"
+                    return@launch
+                }
+
+                selfTest = "E2E: resolved ${peer.host}:${peer.port}, sending…"
+
+                val size = 256 * 1024
+                val bytes = ByteArray(size).also { Random(21).nextBytes(it) }
+                val name = "morph-e2e.bin"
+                val temp = File(ctx.cacheDir, "e2e-${System.currentTimeMillis()}.bin")
+                temp.writeBytes(bytes)
+                prepared = Prepared(temp, name, "application/octet-stream", size.toLong(), Digest.sha256(bytes))
+
+                e2eAutoAccept = true
+                e2eHost = peer.host
+                publish(
+                    ctx,
+                    DropUi(
+                        kind = DropKind.OUTGOING,
+                        peerName = ownName.removePrefix(TAG_NAME) + " (self)",
+                        shell = ThemePrefs.selected(ctx),
+                        fileName = name,
+                        sizeLabel = formatBytes(size.toLong()),
+                        phase = TransferPhase.RUNNING,
+                    )
+                )
+
+                transfer(ctx, peer.name, peer.host, peer.port, prepared)
+
+                val saved = withTimeoutOrNull(8_000) {
+                    while (lastSaved == null) delay(100)
+                    lastSaved
+                }
+
+                selfTest = if (saved != null) {
+                    "E2E OK · mDNS + TCP + AES-256-GCM · saved ${saved}"
+                } else {
+                    "E2E: sent, but no saved-file confirmation"
+                }
+                status = "E2E transfer complete"
+                publish(ctx, drop?.copy(phase = TransferPhase.DONE, progress = 1f, message = "E2E OK"))
+                delay(1800)
+                publish(ctx, null)
+            } catch (t: Throwable) {
+                val message = friendly(t)
+                lastError = message
+                selfTest = "E2E failed: $message"
+                publish(ctx, drop?.copy(phase = TransferPhase.DONE, message = message, ok = false))
+                delay(2200)
+                publish(ctx, null)
+            } finally {
+                prepared?.file?.delete()
+                e2eAutoAccept = false
+                e2eHost = null
+                includeSelfInDiscovery = false
+                selfPeer = null
             }
         }
     }
@@ -328,6 +423,13 @@ object MorphEngine {
             )
             status = "Incoming ${file.name} from $peerName"
 
+            if (e2eAutoAccept &&
+                (socket.inetAddress?.hostAddress == e2eHost ||
+                    socket.inetAddress?.isLoopbackAddress == true)
+            ) {
+                incoming.decision.complete(true)
+            }
+
             val accepted = withTimeoutOrNull(Protocol.ACCEPT_TIMEOUT_MS) {
                 incoming.decision.await()
             } ?: false
@@ -362,6 +464,7 @@ object MorphEngine {
             }
             link.ack()
 
+            lastSaved = "${file.name} · ${formatBytes(file.size)}"
             publish(ctx, drop?.copy(phase = TransferPhase.DONE, progress = 1f, message = "Saved to Downloads/MORPH"))
             status = "Saved ${file.name} to Downloads/MORPH"
             delay(1800)
@@ -439,7 +542,7 @@ object MorphEngine {
             override fun onServiceFound(serviceInfo: NsdServiceInfo) {
                 val name = serviceInfo.serviceName ?: return
                 if (!name.startsWith(TAG_NAME)) return
-                if (name == TAG_NAME + deviceName()) return
+                if (name == TAG_NAME + deviceName() && !includeSelfInDiscovery) return
                 resolve(manager, serviceInfo)
             }
 
@@ -480,7 +583,13 @@ object MorphEngine {
                 )
                 resolved[name] = peer
                 val index = peers.indexOfFirst { it.id == name }
-                if (index >= 0) peers[index] = peer else peers.add(peer)
+                if (index >= 0) peers[index] = peer else {
+                    val self = name == TAG_NAME + deviceName()
+                    if (!self) peers.add(peer)
+                }
+                if (name == TAG_NAME + deviceName()) {
+                    selfPeer?.complete(peer)
+                }
             }
         })
     }

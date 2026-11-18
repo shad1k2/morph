@@ -208,6 +208,7 @@ private fun MorphRoot() {
                     localPort = MorphEngine.port,
                     selfTest = MorphEngine.selfTest,
                     onSelfTest = { MorphEngine.runSelfTest(context) },
+                    onE2E = { MorphEngine.runE2E(context) },
                     onRestartDiscovery = {
                         startReceiving(context)
                         MorphEngine.refreshDiscovery()

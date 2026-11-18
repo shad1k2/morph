@@ -43,6 +43,7 @@ fun SettingsScreen(
     localPort: Int,
     selfTest: String?,
     onSelfTest: () -> Unit,
+    onE2E: () -> Unit,
     onRestartDiscovery: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -201,6 +202,9 @@ fun SettingsScreen(
                 SecondaryAction("RESCAN", theme, Modifier.weight(1f)) { onRestartDiscovery() }
             }
 
+            Spacer(Modifier.height(8.dp))
+            SecondaryAction("E2E RECEIVE TEST", theme, Modifier.fillMaxWidth()) { onE2E() }
+
             selfTest?.let { result ->
                 Spacer(Modifier.height(10.dp))
                 Text(
@@ -214,8 +218,8 @@ fun SettingsScreen(
 
             Spacer(Modifier.height(8.dp))
             Text(
-                "Self-test runs a full encrypted transfer over loopback TCP on this phone — " +
-                    "no second device needed.",
+                "SELF-TEST runs the protocol over loopback. E2E advertises over mDNS, resolves " +
+                    "this phone, then sends a 256 KB file through the real TCP + MediaStore path.",
                 color = theme.dim,
                 fontFamily = theme.body ?: FontFamily.Default,
                 fontSize = 10.sp,

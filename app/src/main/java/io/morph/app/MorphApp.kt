@@ -18,12 +18,16 @@ class MorphApp : Application(), Application.ActivityLifecycleCallbacks {
         registerActivityLifecycleCallbacks(this)
     }
 
+    private var resumed = 0
+
     override fun onActivityResumed(activity: Activity) {
+        resumed++
         isForeground = true
     }
 
     override fun onActivityPaused(activity: Activity) {
-        isForeground = false
+        resumed = (resumed - 1).coerceAtLeast(0)
+        isForeground = resumed > 0
     }
 
     override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) = Unit
