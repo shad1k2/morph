@@ -28,6 +28,6 @@ class DropTriggerActivity : ComponentActivity() {
                     .putExtra(MainActivity.EXTRA_ASK_OVERLAY, true)
             )
         }
-        finishAndRemoveTask()
+        finish()
     }
 }
