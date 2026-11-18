@@ -31,13 +31,23 @@ class MorphNdefService : HostApduService() {
     }
 
     override fun processCommandApdu(commandApdu: ByteArray, extras: Bundle?): ByteArray {
-        if (commandApdu.size < 4) return fail()
-        val instruction = commandApdu[1].toInt() and 0xFF
-        return when (instruction) {
-            SELECT -> select(commandApdu)
-            READ_BINARY -> read(commandApdu)
-            else -> status(0x6D, 0x00) // instruction not supported
+        Log.d("MORPH", "APDU IN: ${hex(commandApdu)}")
+        val response = try {
+            if (commandApdu.size < 4) {
+                status(0x67, 0x00)
+            } else {
+                when (commandApdu[1].toInt() and 0xFF) {
+                    SELECT -> select(commandApdu)
+                    READ_BINARY -> read(commandApdu)
+                    else -> status(0x6D, 0x00)
+                }
+            }
+        } catch (t: Throwable) {
+            Log.w("MORPH", "APDU handler failed", t)
+            status(0x6F, 0x00)
         }
+        Log.d("MORPH", "APDU OUT: ${hex(response)}")
+        return response
     }
 
     override fun onDeactivated(reason: Int) {
@@ -45,6 +55,7 @@ class MorphNdefService : HostApduService() {
     }
 
     private fun select(apdu: ByteArray): ByteArray {
+        if (apdu.size < 5) return ok()
         val p1 = apdu[2].toInt() and 0xFF
         val dataSize = apdu[4].toInt() and 0xFF
         val data = if (apdu.size >= 5 + dataSize) {
@@ -142,6 +153,9 @@ class MorphNdefService : HostApduService() {
         private const val READ_BINARY = 0xB0
 
         private val NDEF_AID = hex("D2760000850101")
+
+        private fun hex(bytes: ByteArray): String =
+            bytes.joinToString(" ") { "%02X".format(it) }
 
         private fun hex(value: String): ByteArray {
             val out = ByteArray(value.length / 2)
