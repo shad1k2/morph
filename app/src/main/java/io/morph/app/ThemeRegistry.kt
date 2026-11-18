@@ -1,6 +1,7 @@
 package io.morph.app
 
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -26,9 +27,9 @@ data class ShellTheme(
 )
 
 object ThemeRegistry {
-    private val geist = FontFamily(R.font.geist_regular)
-    private val geistMono = FontFamily(R.font.geist_mono_regular)
-    private val ndot = FontFamily(R.font.ndot_57)
+    private val geist = FontFamily(Font(R.font.geist_regular))
+    private val geistMono = FontFamily(Font(R.font.geist_mono_regular))
+    private val ndot = FontFamily(Font(R.font.ndot_57))
 
     fun get(shell: ShellId): ShellTheme = when (shell) {
         ShellId.PIXEL -> ShellTheme(
