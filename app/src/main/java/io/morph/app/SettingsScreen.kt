@@ -1,0 +1,307 @@
+package io.morph.app
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import io.morph.core.ShellId
+
+@Composable
+fun SettingsScreen(
+    theme: ShellTheme,
+    detected: ShellId,
+    onSelectShell: (ShellId) -> Unit,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val scroll = rememberScrollState()
+
+    Column(
+        modifier
+            .fillMaxSize()
+            .verticalScroll(scroll)
+            .padding(horizontal = 20.dp)
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(top = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            MonoLabel(
+                "← BACK",
+                theme.dim,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .border(1.dp, theme.border, RoundedCornerShape(50))
+                    .clickable { onBack() }
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                size = 9,
+                tracking = 0.8f,
+            )
+            Spacer(Modifier.weight(1f))
+            BrandOval(theme, compact = true)
+        }
+
+        Spacer(Modifier.height(26.dp))
+        Text(
+            if (theme.uppercaseHeadline) "SETTINGS" else "Settings",
+            color = theme.text,
+            fontFamily = theme.headline ?: FontFamily.Default,
+            fontWeight = FontWeight.Bold,
+            fontSize = 32.sp,
+            letterSpacing = theme.headlineTracking.sp,
+        )
+        Spacer(Modifier.height(18.dp))
+
+        // Detected shell
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .shellSurface(theme, RoundedCornerShape(theme.radius))
+                .padding(18.dp)
+        ) {
+            MonoLabel("DETECTED SHELL", theme.dim, size = 8, tracking = 1.3f)
+            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text(
+                    theme.name,
+                    color = theme.text,
+                    fontFamily = theme.headline ?: FontFamily.Default,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 26.sp,
+                    letterSpacing = theme.headlineTracking.sp,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    "0x" + "%02X".format(theme.shell.code),
+                    color = theme.accent,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 12.sp,
+                )
+            }
+            Spacer(Modifier.height(6.dp))
+            Text(
+                if (theme.shell == detected) {
+                    "Matches this device. The pop-up is drawn in this style."
+                } else {
+                    "Preview override. The real pop-up still uses ${ThemeRegistry.get(detected).name}."
+                },
+                color = theme.dim,
+                fontFamily = theme.body ?: FontFamily.Default,
+                fontSize = 11.sp,
+                lineHeight = 16.sp,
+            )
+        }
+
+        Spacer(Modifier.height(22.dp))
+        MonoLabel("PREVIEW AS", theme.dim, size = 9, tracking = 1.4f)
+        Spacer(Modifier.height(10.dp))
+
+        val packs = ThemeRegistry.all
+        packs.chunked(2).forEach { row ->
+            Row(
+                Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                row.forEach { pack ->
+                    ThemeTile(pack, pack.shell == theme.shell, Modifier.weight(1f)) {
+                        onSelectShell(pack.shell)
+                    }
+                }
+                if (row.size == 1) Spacer(Modifier.weight(1f))
+            }
+        }
+
+        Spacer(Modifier.height(18.dp))
+        MonoLabel("TRANSPORT", theme.dim, size = 9, tracking = 1.4f)
+        Spacer(Modifier.height(10.dp))
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .shellSurface(theme, RoundedCornerShape(theme.radius))
+        ) {
+            var nfc by remember { mutableStateOf(true) }
+            var ble by remember { mutableStateOf(true) }
+            var wifi by remember { mutableStateOf(true) }
+            ToggleRow("NFC tap to connect", "Android Beam successor", nfc, theme) { nfc = it }
+            Hairline(theme, Modifier.padding(horizontal = 16.dp))
+            ToggleRow("Bluetooth control", "Pairing and handshake", ble, theme) { ble = it }
+            Hairline(theme, Modifier.padding(horizontal = 16.dp))
+            ToggleRow("Wi-Fi Direct data", "Fast local file transfer", wifi, theme) { wifi = it }
+        }
+
+        Spacer(Modifier.height(18.dp))
+        MonoLabel("PROTOCOL", theme.dim, size = 9, tracking = 1.4f)
+        Spacer(Modifier.height(10.dp))
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .shellSurface(theme, RoundedCornerShape(theme.radius))
+                .padding(18.dp)
+        ) {
+            ProtocolLine("Spec", "DROP/1 · v0.2", theme)
+            ProtocolLine("Handshake", "X25519 → HKDF-SHA256", theme)
+            ProtocolLine("Payload", "AES-256-GCM", theme)
+            ProtocolLine("Relay", "none · direct only", theme)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "No accounts, no cloud, no telemetry.",
+                color = theme.dim,
+                fontFamily = theme.body ?: FontFamily.Default,
+                fontSize = 11.sp,
+            )
+        }
+
+        Spacer(Modifier.height(22.dp))
+        MonoLabel("MORPH APP v0.1 · UI PREVIEW", theme.dim, size = 8, tracking = 1.1f)
+        Spacer(Modifier.height(24.dp))
+    }
+}
+
+@Composable
+private fun ThemeTile(
+    pack: ShellTheme,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    val shape = RoundedCornerShape(pack.radius * 0.55f)
+    Column(
+        modifier
+            .clip(shape)
+            .background(pack.surface)
+            .border(
+                width = if (selected) 2.dp else 1.dp,
+                color = if (selected) pack.accent else pack.border,
+                shape = shape,
+            )
+            .clickable { onClick() }
+            .padding(12.dp)
+    ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            listOf(pack.background.first(), pack.accent, pack.surfaceAlt).forEach { color ->
+                Box(
+                    Modifier
+                        .size(9.dp)
+                        .clip(RoundedCornerShape(50))
+                        .background(color)
+                        .border(1.dp, pack.border, RoundedCornerShape(50))
+                )
+            }
+        }
+        Spacer(Modifier.height(9.dp))
+        Text(
+            pack.name,
+            color = pack.text,
+            fontFamily = pack.headline ?: FontFamily.Default,
+            fontWeight = FontWeight.Bold,
+            fontSize = 13.sp,
+            letterSpacing = if (pack.shell == ShellId.NOTHING_OS) 0.6.sp else 0.sp,
+        )
+        Text(
+            "0x" + "%02X".format(pack.shell.code),
+            color = pack.dim,
+            fontFamily = FontFamily.Monospace,
+            fontSize = 9.sp,
+        )
+    }
+}
+
+@Composable
+private fun ToggleRow(
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    theme: ShellTheme,
+    onToggle: (Boolean) -> Unit,
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable { onToggle(!checked) }
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                title,
+                color = theme.text,
+                fontFamily = theme.body ?: FontFamily.Default,
+                fontSize = 13.sp,
+            )
+            Text(
+                subtitle,
+                color = theme.dim,
+                fontFamily = theme.body ?: FontFamily.Default,
+                fontSize = 10.sp,
+            )
+        }
+        SwitchPill(checked, theme)
+    }
+}
+
+@Composable
+private fun SwitchPill(checked: Boolean, theme: ShellTheme) {
+    val shape = RoundedCornerShape(50)
+    Box(
+        Modifier
+            .width(40.dp)
+            .height(24.dp)
+            .clip(shape)
+            .background(if (checked) theme.accent else theme.surfaceAlt)
+            .border(1.dp, if (checked) theme.accent else theme.border, shape)
+            .padding(3.dp),
+        contentAlignment = if (checked) Alignment.CenterEnd else Alignment.CenterStart,
+    ) {
+        Box(
+            Modifier
+                .size(18.dp)
+                .clip(RoundedCornerShape(50))
+                .background(if (checked) theme.onAccent else theme.dim)
+        )
+    }
+}
+
+@Composable
+private fun ProtocolLine(label: String, value: String, theme: ShellTheme) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
+        Text(
+            label,
+            color = theme.dim,
+            fontFamily = FontFamily.Monospace,
+            fontSize = 10.sp,
+            modifier = Modifier.width(88.dp),
+        )
+        Text(
+            value,
+            color = theme.text,
+            fontFamily = FontFamily.Monospace,
+            fontSize = 10.sp,
+        )
+    }
+}

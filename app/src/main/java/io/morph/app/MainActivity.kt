@@ -1,213 +1,223 @@
 package io.morph.app
 
+import android.app.Activity
+import android.content.Context
+import android.net.Uri
 import android.os.Bundle
+import android.provider.OpenableColumns
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import androidx.core.view.WindowCompat
 import io.morph.core.ShellId
+import kotlinx.coroutines.delay
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { MorphPreview() }
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        window.statusBarColor = Color.Transparent.toArgb()
+        window.navigationBarColor = Color.Transparent.toArgb()
+        setContent { MorphApp() }
     }
 }
 
-/** Pop-up style preview: brand oval in the top corner + themed drop card. */
+private enum class Screen { HOME, SETTINGS }
+
 @Composable
-fun MorphPreview() {
-    var shell by remember { mutableStateOf(ShellDetector.detect()) }
+private fun MorphApp() {
+    val context = LocalContext.current
+    val detected: ShellId = remember { ShellDetector.detect() }
+    var shell by remember { mutableStateOf(detected) }
     val theme = ThemeRegistry.get(shell)
 
-    Column(
-        Modifier
-            .fillMaxSize()
-            .background(theme.background)
-            .statusBarsPadding()
-            .navigationBarsPadding()
-    ) {
-        Box(Modifier.fillMaxWidth().height(72.dp)) {
-            Text(
-                "MORPH / DROP PREVIEW",
-                modifier = Modifier.align(Alignment.TopStart).padding(20.dp),
-                color = theme.dim,
-                fontFamily = theme.headline ?: FontFamily.Default,
-                fontSize = 11.sp,
-            )
-            BrandOval(theme, Modifier.align(Alignment.TopEnd).padding(16.dp))
-        }
+    var screen by remember { mutableStateOf(Screen.HOME) }
+    var transfer by remember { mutableStateOf<TransferUi?>(null) }
+    var phase by remember { mutableStateOf(TransferPhase.PROMPT) }
+    var progress by remember { mutableStateOf(0f) }
 
-        DropCard(theme)
-        Spacer(Modifier.height(20.dp))
-        ThemeSwitcher(shell) { shell = it }
-    }
-}
-
-/** Oval brand badge pinned to the top corner of the pop-up. */
-@Composable
-private fun BrandOval(theme: ShellTheme, modifier: Modifier = Modifier) {
-    val shape = RoundedCornerShape(50.dp)
-    val background = if (theme.glass) theme.surface else theme.accent
-    val foreground = if (theme.glass) theme.text else theme.onAccent
-
-    Box(
-        modifier
-            .clip(shape)
-            .background(background)
-            .border(1.dp, theme.border, shape)
-            .padding(horizontal = 16.dp, vertical = 8.dp)
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                Modifier
-                    .size(8.dp)
-                    .background(
-                        if (theme.shell == ShellId.NOTHING_OS) Color(0xFFD71921) else theme.text,
-                        RoundedCornerShape(50.dp),
-                    )
-            )
-            Spacer(Modifier.width(8.dp))
-            Text(
-                theme.brand,
-                color = foreground,
-                fontFamily = theme.headline,
-                fontWeight = FontWeight.Bold,
-                fontSize = 12.sp,
-            )
+    val activity = context as? Activity
+    SideEffect {
+        activity?.let {
+            val controller = WindowCompat.getInsetsController(it.window, it.window.decorView)
+            controller.isAppearanceLightStatusBars = !theme.isDark
+            controller.isAppearanceLightNavigationBars = !theme.isDark
         }
     }
-}
 
-@Composable
-private fun DropCard(theme: ShellTheme) {
-    val shape = RoundedCornerShape(theme.radius)
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp)
-            .clip(shape)
-            .background(theme.surface)
-            .border(1.dp, theme.border, shape)
-            .padding(24.dp)
-    ) {
-        Text(
-            "DROP READY",
-            color = theme.accent,
-            fontFamily = theme.headline ?: theme.body,
-            fontSize = 22.sp,
-            fontWeight = FontWeight.Bold,
-        )
-        Text(
-            "Incoming transfer · 2 files · 3.8 MB",
-            color = theme.dim,
-            fontFamily = theme.body,
-            fontSize = 12.sp,
-        )
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+        if (uri != null) {
+            val name = queryDisplayName(context, uri)
+            val target = demoDevices.firstOrNull() ?: return@rememberLauncherForActivityResult
+            progress = 0f
+            phase = TransferPhase.RUNNING
+            transfer = TransferUi.Outgoing(target, name, "2.4 MB")
+        }
+    }
 
-        Spacer(Modifier.height(20.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                Modifier
-                    .size(44.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(theme.accent.copy(alpha = 0.18f))
-            )
-            Spacer(Modifier.width(12.dp))
-            Column {
-                Text("photo.jpg", color = theme.text, fontFamily = theme.body, fontSize = 15.sp)
-                Text("2.4 MB · JPEG", color = theme.dim, fontFamily = theme.body, fontSize = 11.sp)
+    // Fake progress until the DROP/1 data channel is wired.
+    LaunchedEffect(transfer, phase) {
+        if (phase == TransferPhase.RUNNING) {
+            progress = 0f
+            repeat(100) { step ->
+                delay(22)
+                progress = (step + 1) / 100f
+            }
+            phase = TransferPhase.DONE
+        }
+    }
+
+    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(theme.background))) {
+        GlassBackdrop(theme)
+
+        Column(
+            Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
+        ) {
+            when (screen) {
+                Screen.HOME -> HomeScreen(
+                    theme = theme,
+                    devices = demoDevices,
+                    onDeviceTap = { device ->
+                        progress = 0f
+                        phase = TransferPhase.PROMPT
+                        transfer = TransferUi.Incoming(
+                            device = device,
+                            fileName = "photo.jpg",
+                            totalFiles = 2,
+                            sizeLabel = "3.8 MB",
+                        )
+                    },
+                    onSendFiles = { picker.launch(arrayOf("*/*")) },
+                    onOpenSettings = { screen = Screen.SETTINGS },
+                )
+
+                Screen.SETTINGS -> SettingsScreen(
+                    theme = theme,
+                    detected = detected,
+                    onSelectShell = { shell = it },
+                    onBack = { screen = Screen.HOME },
+                )
             }
         }
 
-        Spacer(Modifier.height(24.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            ActionButton("ACCEPT", theme, filled = true, modifier = Modifier.weight(1f))
-            ActionButton("DECLINE", theme, filled = false, modifier = Modifier.weight(1f))
-        }
-    }
-}
-
-@Composable
-private fun ActionButton(
-    text: String,
-    theme: ShellTheme,
-    filled: Boolean,
-    modifier: Modifier = Modifier,
-) {
-    val shape = RoundedCornerShape(if (theme.shell == ShellId.ONE_UI) 50.dp else theme.radius)
-    Box(
-        modifier
-            .clip(shape)
-            .background(if (filled) theme.accent else Color.Transparent)
-            .border(1.dp, theme.accent, shape)
-            .clickable { }
-            .padding(vertical = 14.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text,
-            color = if (filled) theme.onAccent else theme.accent,
-            fontFamily = theme.body,
-            fontWeight = FontWeight.Bold,
-            fontSize = 13.sp,
-        )
-    }
-}
-
-@Composable
-private fun ThemeSwitcher(current: ShellId, onSelect: (ShellId) -> Unit) {
-    val scroll = rememberScrollState()
-    Row(Modifier.fillMaxWidth().horizontalScroll(scroll).padding(horizontal = 20.dp)) {
-        ThemeRegistry.all.forEach { theme ->
-            val selected = theme.shell == current
-            val shape = RoundedCornerShape(50.dp)
-            Box(
-                Modifier
-                    .padding(end = 8.dp)
-                    .clip(shape)
-                    .background(if (selected) theme.accent else Color.Transparent)
-                    .border(1.dp, if (selected) theme.accent else theme.border, shape)
-                    .clickable { onSelect(theme.shell) }
-                    .padding(horizontal = 14.dp, vertical = 8.dp)
-            ) {
-                Text(
-                    theme.name,
-                    color = if (selected) theme.onAccent else theme.dim,
-                    fontSize = 12.sp,
+        AnimatedVisibility(
+            visible = transfer != null,
+            enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
+            exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
+        ) {
+            transfer?.let { current ->
+                TransferOverlay(
+                    theme = theme,
+                    transfer = current,
+                    phase = phase,
+                    progress = progress,
+                    onAccept = {
+                        progress = 0f
+                        phase = TransferPhase.RUNNING
+                    },
+                    onDecline = {
+                        transfer = null
+                        phase = TransferPhase.PROMPT
+                        progress = 0f
+                    },
+                    onDone = {
+                        transfer = null
+                        phase = TransferPhase.PROMPT
+                        progress = 0f
+                    },
                 )
             }
         }
     }
+}
+
+/** Soft coloured light under translucent packs so glass reads as glass. */
+@Composable
+private fun GlassBackdrop(theme: ShellTheme) {
+    if (theme.cardStyle != CardStyle.GLASS) return
+
+    Box(
+        Modifier
+            .align(Alignment.TopStart)
+            .offset(x = (-110).dp, y = 30.dp)
+            .size(300.dp)
+            .background(
+                Brush.radialGradient(
+                    listOf(theme.accent.copy(alpha = 0.26f), Color.Transparent)
+                ),
+                RoundedCornerShape(50),
+            )
+    )
+    Box(
+        Modifier
+            .align(Alignment.BottomEnd)
+            .offset(x = 120.dp, y = (-140).dp)
+            .size(340.dp)
+            .background(
+                Brush.radialGradient(
+                    listOf(theme.accentAlt.copy(alpha = 0.22f), Color.Transparent)
+                ),
+                RoundedCornerShape(50),
+            )
+    )
+    Box(
+        Modifier
+            .align(Alignment.TopEnd)
+            .offset(x = 40.dp, y = 160.dp)
+            .width(160.dp)
+            .height(160.dp)
+            .background(
+                Brush.radialGradient(
+                    listOf(theme.brandBg.copy(alpha = 0.16f), Color.Transparent)
+                ),
+                RoundedCornerShape(50),
+            )
+    )
+}
+
+private fun queryDisplayName(context: Context, uri: Uri): String = try {
+    context.contentResolver
+        .query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+        ?.use { cursor ->
+            if (cursor.moveToFirst()) cursor.getString(0) else null
+        }
+        ?: "file"
+} catch (t: Throwable) {
+    "file"
 }
