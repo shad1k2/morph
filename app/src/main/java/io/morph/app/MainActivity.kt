@@ -10,6 +10,7 @@ import android.nfc.NfcAdapter
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -88,7 +89,10 @@ class MainActivity : ComponentActivity() {
         @Suppress("DEPRECATION")
         val messages = intent.getParcelableArrayExtra(NfcAdapter.EXTRA_NDEF_MESSAGES)
         nfcPeer = NfcHandoff.decode(messages?.firstOrNull() as? NdefMessage).also {
-            if (it != null) MorphEngine.note("NFC tap: ${it.name} at ${it.host}")
+            if (it != null) {
+                Log.d("MORPH", "NFC read: ${it.name} ${it.host}:${it.port}")
+                MorphEngine.note("NFC tap: ${it.name} at ${it.host}")
+            }
         }
     }
 }

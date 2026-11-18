@@ -2,6 +2,7 @@ package io.morph.app
 
 import android.nfc.cardemulation.HostApduService
 import android.os.Bundle
+import android.util.Log
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
@@ -16,6 +17,7 @@ class MorphNdefService : HostApduService() {
         super.onCreate()
         // Make sure the advertised port is actually listening before we are read.
         MorphEngine.start(applicationContext)
+        Log.d("MORPH", "NFC tag ready: ${NfcHandoff.message(applicationContext)}")
     }
 
     override fun processCommandApdu(commandApdu: ByteArray, extras: Bundle?): ByteArray {
