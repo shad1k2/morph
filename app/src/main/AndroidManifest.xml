@@ -28,13 +28,20 @@
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTop">
-            <meta-data
-                android:name="android.nfc.action.TECH_DISCOVERED"
-                android:resource="@xml/nfc_tech_filter" />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+        </activity>
+
+        <!-- NFC tap → system overlay card (no MORPH UI in front). -->
+        <activity
+            android:name=".NfcHandoffActivity"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:noHistory="true"
+            android:taskAffinity="io.morph.app.nfc"
+            android:theme="@style/Theme.Morph.Invisible">
             <intent-filter>
                 <action android:name="android.nfc.action.NDEF_DISCOVERED" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -53,7 +60,19 @@
                 <action android:name="android.nfc.action.TAG_DISCOVERED" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
+
+            <meta-data
+                android:name="android.nfc.action.TECH_DISCOVERED"
+                android:resource="@xml/nfc_tech_filter" />
         </activity>
+
+        <activity
+            android:name=".FilePickActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:noHistory="true"
+            android:taskAffinity="io.morph.app.picker"
+            android:theme="@style/Theme.Morph.Invisible" />
 
         <!-- Own (empty) task so finishing it reveals the app the user came from
              instead of bringing MORPH's own task to the front. -->

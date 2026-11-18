@@ -82,6 +82,18 @@ class OverlayService : Service() {
                         onAccept = { MorphEngine.acceptIncoming() },
                         onDecline = { MorphEngine.declineIncoming() },
                         onDone = { MorphEngine.dismiss() },
+                        onAction = {
+                            if (drop.actionLabel != null) {
+                                runCatching {
+                                    startActivity(
+                                        Intent(this@OverlayService, FilePickActivity::class.java)
+                                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    )
+                                }
+                            } else {
+                                MorphEngine.dismiss()
+                            }
+                        },
                     )
                 }
             }

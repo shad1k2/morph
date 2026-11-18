@@ -304,6 +304,15 @@ private fun MorphRoot(
                     onAccept = { MorphEngine.acceptIncoming() },
                     onDecline = { MorphEngine.declineIncoming() },
                     onDone = { MorphEngine.dismiss() },
+                    onAction = {
+                        if (current.actionLabel != null) {
+                            runCatching {
+                                startActivity(Intent(context, FilePickActivity::class.java))
+                            }
+                        } else {
+                            MorphEngine.dismiss()
+                        }
+                    },
                 )
             }
         }

@@ -47,6 +47,7 @@ fun OverlayPopup(
     onAccept: () -> Unit,
     onDecline: () -> Unit,
     onDone: () -> Unit,
+    onAction: () -> Unit = onDone,
     entrance: Boolean = true,
 ) {
     var visible by remember { mutableStateOf(!entrance) }
@@ -113,7 +114,7 @@ fun OverlayPopup(
                     Spacer(Modifier.width(6.dp))
                     Text(
                         when (drop.kind) {
-                            DropKind.READY -> "This device · ${peer.name}"
+                            DropKind.READY -> "${drop.peerName} · ${peer.name}"
                             DropKind.INCOMING -> "${drop.peerName} · ${peer.name}"
                             DropKind.OUTGOING -> "to ${drop.peerName} · ${peer.name}"
                         },
@@ -166,8 +167,16 @@ fun OverlayPopup(
 
                 Spacer(Modifier.height(14.dp))
                 when {
-                    drop.kind == DropKind.READY -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        PrimaryAction("CLOSE", theme, Modifier.weight(1f)) { onDone() }
+                    drop.kind == DropKind.READY -> {
+                        val label = drop.actionLabel
+                        if (label == null) {
+                            PrimaryAction("CLOSE", theme, Modifier.fillMaxWidth()) { onDone() }
+                        } else {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                PrimaryAction(label, theme, Modifier.weight(1f)) { onAction() }
+                                SecondaryAction("CANCEL", theme, Modifier.weight(1f)) { onDone() }
+                            }
+                        }
                     }
 
                     phase == TransferPhase.PROMPT -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

@@ -24,6 +24,7 @@ fun TransferOverlay(
     onAccept: () -> Unit,
     onDecline: () -> Unit,
     onDone: () -> Unit,
+    onAction: () -> Unit = onDone,
 ) {
     Box(
         Modifier
@@ -41,6 +42,7 @@ fun TransferOverlay(
                 onAccept = onAccept,
                 onDecline = onDecline,
                 onDone = onDone,
+                onAction = onAction,
             )
         }
     }

@@ -68,6 +68,8 @@ data class DropUi(
     val progress: Float = 0f,
     val message: String? = null,
     val ok: Boolean = true,
+    /** Optional action shown on a READY card (e.g. "SEND FILE" after NFC tap). */
+    val actionLabel: String? = null,
 )
 
 /**
@@ -95,6 +97,8 @@ object MorphEngine {
     var selfTest by mutableStateOf<String?>(null)
         private set
     var lastSaved by mutableStateOf<String?>(null)
+        private set
+    var nfcPeer by mutableStateOf<Peer?>(null)
         private set
 
     /** Local TCP port other phones connect to. */
@@ -184,6 +188,23 @@ object MorphEngine {
         peers.clear()
         resolved.clear()
         startDiscovery(ctx, manager)
+    }
+
+    /** Pop-up after an NFC tap: the other phone is known, pick what to send. */
+    fun showNfcReady(context: Context, peer: Peer) {
+        val ctx = context.applicationContext
+        nfcPeer = peer
+        status = "NFC tap: ${peer.name} at ${peer.host}"
+        publish(
+            ctx,
+            DropUi(
+                kind = DropKind.READY,
+                peerName = peer.name,
+                shell = peer.shell,
+                message = "Connected over NFC · ${peer.host}",
+                actionLabel = "SEND FILE",
+            )
+        )
     }
 
     /** Ready card shown when the QS tile is tapped. */
