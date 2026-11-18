@@ -38,6 +38,9 @@ fun SettingsScreen(
     detected: ShellId,
     onSelectShell: (ShellId) -> Unit,
     onBack: () -> Unit,
+    overlayEnabled: Boolean,
+    onGrantOverlay: () -> Unit,
+    onTestOverlay: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val scroll = rememberScrollState()
@@ -153,6 +156,76 @@ fun SettingsScreen(
             ToggleRow("Bluetooth control", "Pairing and handshake", ble, theme) { ble = it }
             Hairline(theme, Modifier.padding(horizontal = 16.dp))
             ToggleRow("Wi-Fi Direct data", "Fast local file transfer", wifi, theme) { wifi = it }
+        }
+
+        Spacer(Modifier.height(18.dp))
+        MonoLabel("POP-UP & QUICK SETTINGS", theme.dim, size = 9, tracking = 1.4f)
+        Spacer(Modifier.height(10.dp))
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .shellSurface(theme, RoundedCornerShape(theme.radius))
+                .padding(18.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        "Pop-up over apps",
+                        color = theme.text,
+                        fontFamily = theme.body ?: FontFamily.Default,
+                        fontSize = 13.sp,
+                    )
+                    Text(
+                        if (overlayEnabled) {
+                            "Allowed. The drop card can appear above other apps."
+                        } else {
+                            "Not allowed yet. Without it the tile opens MORPH instead."
+                        },
+                        color = theme.dim,
+                        fontFamily = theme.body ?: FontFamily.Default,
+                        fontSize = 10.sp,
+                        lineHeight = 14.sp,
+                    )
+                }
+                Spacer(Modifier.width(10.dp))
+                MonoLabel(
+                    if (overlayEnabled) "ON" else "OFF",
+                    if (overlayEnabled) theme.accent else theme.dim,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .border(
+                            1.dp,
+                            if (overlayEnabled) theme.accent.copy(alpha = 0.45f) else theme.border,
+                            RoundedCornerShape(50),
+                        )
+                        .clickable { if (!overlayEnabled) onGrantOverlay() }
+                        .padding(horizontal = 10.dp, vertical = 4.dp),
+                    size = 9,
+                    tracking = 1f,
+                )
+            }
+
+            Spacer(Modifier.height(12.dp))
+            Hairline(theme)
+            Spacer(Modifier.height(12.dp))
+
+            Text(
+                "Add the tile: swipe down twice → pencil → drag \"MORPH drop\" into the shade. " +
+                    "Tap it to drop the pop-up over whatever you are doing.",
+                color = theme.dim,
+                fontFamily = theme.body ?: FontFamily.Default,
+                fontSize = 11.sp,
+                lineHeight = 16.sp,
+            )
+
+            Spacer(Modifier.height(14.dp))
+            PrimaryAction(
+                if (overlayEnabled) "TEST POP-UP" else "ALLOW POP-UP",
+                theme,
+                Modifier.fillMaxWidth(),
+            ) {
+                if (overlayEnabled) onTestOverlay() else onGrantOverlay()
+            }
         }
 
         Spacer(Modifier.height(18.dp))

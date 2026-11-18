@@ -46,6 +46,9 @@ fun HomeScreen(
     onDeviceTap: (NearbyDevice) -> Unit,
     onSendFiles: () -> Unit,
     onOpenSettings: () -> Unit,
+    overlayEnabled: Boolean,
+    onEnableOverlay: () -> Unit,
+    onTestOverlay: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier.fillMaxSize().padding(horizontal = 20.dp)) {
@@ -99,6 +102,37 @@ fun HomeScreen(
             fontSize = 12.sp,
             lineHeight = 18.sp,
         )
+
+        Spacer(Modifier.height(10.dp))
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(50))
+                .background(theme.accent.copy(alpha = 0.12f))
+                .border(1.dp, theme.accent.copy(alpha = 0.38f), RoundedCornerShape(50))
+                .clickable { if (overlayEnabled) onTestOverlay() else onEnableOverlay() }
+                .padding(horizontal = 14.dp, vertical = 9.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(Modifier.size(6.dp).background(theme.accent, RoundedCornerShape(50)))
+            Spacer(Modifier.width(8.dp))
+            Text(
+                if (overlayEnabled) "POP-UP OVER APPS · READY" else "ENABLE POP-UP OVER APPS",
+                color = theme.text,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 9.sp,
+                letterSpacing = 0.7.sp,
+            )
+            Spacer(Modifier.weight(1f))
+            Text(
+                if (overlayEnabled) "TEST →" else "GRANT →",
+                color = theme.accent,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 0.7.sp,
+            )
+        }
 
         Spacer(Modifier.height(6.dp))
         Radar(theme, devices)

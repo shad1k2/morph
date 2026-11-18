@@ -2,9 +2,11 @@ package io.morph.app
 
 import android.app.Activity
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.provider.OpenableColumns
+import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -29,6 +31,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
@@ -43,16 +46,28 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import io.morph.core.ShellId
 import kotlinx.coroutines.delay
 
 class MainActivity : ComponentActivity() {
+
+    companion object {
+        const val EXTRA_ASK_OVERLAY = "io.morph.app.extra.ASK_OVERLAY"
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, false)
         window.statusBarColor = Color.Transparent.toArgb()
         window.navigationBarColor = Color.Transparent.toArgb()
         setContent { MorphApp() }
+
+        if (intent?.getBooleanExtra(EXTRA_ASK_OVERLAY, false) == true) {
+            openOverlaySettings(this)
+        }
     }
 }
 
@@ -69,6 +84,31 @@ private fun MorphApp() {
     var transfer by remember { mutableStateOf<TransferUi?>(null) }
     var phase by remember { mutableStateOf(TransferPhase.PROMPT) }
     var progress by remember { mutableStateOf(0f) }
+    var overlayGranted by remember { mutableStateOf(Settings.canDrawOverlays(context)) }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                overlayGranted = Settings.canDrawOverlays(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    val requestOverlay: () -> Unit = {
+        openOverlaySettings(context)
+    }
+    val testOverlay: () -> Unit = {
+        if (Settings.canDrawOverlays(context)) {
+            context.startService(
+                Intent(context, OverlayService::class.java).setAction(OverlayService.ACTION_SHOW)
+            )
+        } else {
+            openOverlaySettings(context)
+        }
+    }
 
     val activity = context as? Activity
     SideEffect {
@@ -126,6 +166,9 @@ private fun MorphApp() {
                     },
                     onSendFiles = { picker.launch(arrayOf("*/*")) },
                     onOpenSettings = { screen = Screen.SETTINGS },
+                    overlayEnabled = overlayGranted,
+                    onEnableOverlay = requestOverlay,
+                    onTestOverlay = testOverlay,
                 )
 
                 Screen.SETTINGS -> SettingsScreen(
@@ -133,6 +176,9 @@ private fun MorphApp() {
                     detected = detected,
                     onSelectShell = { shell = it },
                     onBack = { screen = Screen.HOME },
+                    overlayEnabled = overlayGranted,
+                    onGrantOverlay = requestOverlay,
+                    onTestOverlay = testOverlay,
                 )
             }
         }
@@ -221,4 +267,20 @@ private fun queryDisplayName(context: Context, uri: Uri): String = try {
         ?: "file"
 } catch (t: Throwable) {
     "file"
+}
+
+private fun openOverlaySettings(context: Context) {
+    val intent = Intent(
+        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+        Uri.parse("package:${context.packageName}"),
+    ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+
+    runCatching { context.startActivity(intent) }.onFailure {
+        runCatching {
+            context.startActivity(
+                Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+        }
+    }
 }
