@@ -39,10 +39,13 @@ object NfcHandoff {
             .build()
             .toString()
 
-        // URI record is understood by every NFC stack, including MIUI; AAR
-        // forces Android to start MORPH even when no mime filter matches.
+        // Keep the legacy MIME record so older MORPH builds can still read the
+        // tag; the morph:// URI works on stacks that ignore custom MIME types;
+        // AAR forces Android to start MORPH even when no filter matches.
+        val legacy = listOf(MARKER, name, host, port, shell).joinToString("\n")
         return NdefMessage(
             arrayOf(
+                NdefRecord.createMime(MIME, legacy.toByteArray(Charsets.UTF_8)),
                 NdefRecord.createUri(uri),
                 NdefRecord.createApplicationRecord("io.morph.app"),
             )
