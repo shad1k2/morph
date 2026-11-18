@@ -1,6 +1,7 @@
 package io.morph.app
 
 import android.content.ContentValues
+import android.util.Log
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -74,6 +75,8 @@ data class DropUi(
  * NSD/mDNS discovery + TCP + X25519 handshake + AES-256-GCM frames.
  */
 object MorphEngine {
+
+    private fun trace(message: String) { Log.d("MORPH", message) }
 
     private const val SERVICE_TYPE = "_morph._tcp"
     private const val TAG_NAME = "MORPH-"
@@ -272,6 +275,7 @@ object MorphEngine {
         Socket().use { socket ->
             socket.connect(InetSocketAddress(host, port), 8_000)
             socket.soTimeout = 30_000
+            trace("OUT: connected to $host:$port")
             val link = DropLink(socket.getInputStream(), socket.getOutputStream(), Role.SENDER)
             link.handshake(localCapabilities())
 
@@ -279,7 +283,9 @@ object MorphEngine {
             val manifest = Manifest(listOf(entry))
             link.sendOffer(manifest)
 
+            trace("OUT: offer sent, awaiting accept")
             if (!link.awaitAccept()) throw IOException("declined by $peerName")
+            trace("OUT: accepted, sending ${prepared.size} bytes")
 
             prepared.file.inputStream().use { input ->
                 link.sendFile(entry, input) { sent ->
@@ -287,8 +293,10 @@ object MorphEngine {
                 }
             }
 
+            trace("OUT: chunks sent")
             link.sendDone(manifest.manifestHash())
             if (!link.awaitAck()) throw IOException("receiver rejected the file")
+            trace("OUT: ack received")
         }
     }
 
@@ -317,6 +325,7 @@ object MorphEngine {
                     return@launch
                 }
 
+                trace("E2E: resolved ${peer.host}:${peer.port}")
                 selfTest = "E2E: resolved ${peer.host}:${peer.port}, sending…"
 
                 val size = 256 * 1024
@@ -342,11 +351,13 @@ object MorphEngine {
 
                 transfer(ctx, peer.name, peer.host, peer.port, prepared)
 
+                trace("E2E: transfer returned")
                 val saved = withTimeoutOrNull(8_000) {
                     while (lastSaved == null) delay(100)
                     lastSaved
                 }
 
+                trace("E2E: saved=$saved")
                 selfTest = if (saved != null) {
                     "E2E OK · mDNS + TCP + AES-256-GCM · saved ${saved}"
                 } else {
@@ -392,6 +403,7 @@ object MorphEngine {
             val link = DropLink(socket.getInputStream(), socket.getOutputStream(), Role.RECEIVER)
             link.handshake(localCapabilities())
             val manifest = link.receiveOffer()
+            trace("IN: offer ${manifest.files.size} file(s)")
             val file = manifest.files.firstOrNull() ?: run {
                 link.decline()
                 return
@@ -407,6 +419,7 @@ object MorphEngine {
                 link.decline()
                 return
             }
+            trace("IN: peer=$peerName host=$host e2eHost=$e2eHost auto=$e2eAutoAccept")
             val incoming = Incoming(peerName, peerShell, manifest, link, socket)
             pending = incoming
 
@@ -430,6 +443,7 @@ object MorphEngine {
                 incoming.decision.complete(true)
             }
 
+            trace("IN: waiting decision")
             val accepted = withTimeoutOrNull(Protocol.ACCEPT_TIMEOUT_MS) {
                 incoming.decision.await()
             } ?: false
@@ -441,17 +455,21 @@ object MorphEngine {
                 return
             }
 
+            trace("IN: accepted=$accepted")
             publish(ctx, drop?.copy(phase = TransferPhase.RUNNING, progress = 0f))
 
+            trace("IN: creating Downloads entry")
             val target = createDownload(ctx, file)
             val sink: OutputStream = ctx.contentResolver.openOutputStream(target)
                 ?: throw IOException("cannot open Downloads")
 
+            trace("IN: sink open, reading chunks")
             val hash = sink.use { out ->
                 link.receiveFile(file, out) { written ->
                     progress(ctx, written.toFloat() / file.size.coerceAtLeast(1))
                 }
             }
+            trace("IN: chunks done, hash=${hash.joinToString("") { "%02X".format(it) }.take(12)}")
             finalizeDownload(ctx, target)
 
             if (!hash.contentEquals(file.sha256)) {
@@ -463,6 +481,7 @@ object MorphEngine {
                 throw IOException("manifest mismatch")
             }
             link.ack()
+            trace("IN: acked")
 
             lastSaved = "${file.name} · ${formatBytes(file.size)}"
             publish(ctx, drop?.copy(phase = TransferPhase.DONE, progress = 1f, message = "Saved to Downloads/MORPH"))
@@ -689,6 +708,7 @@ object MorphEngine {
                         val link = DropLink(socket.getInputStream(), socket.getOutputStream(), Role.RECEIVER)
                         link.handshake(localCapabilities())
                         val manifest = link.receiveOffer()
+            trace("IN: offer ${manifest.files.size} file(s)")
                         link.accept()
                         val hash = link.receiveFile(manifest.files[0], received)
                         link.verifyDone(manifest.manifestHash())
@@ -700,14 +720,16 @@ object MorphEngine {
                 Socket().use { socket ->
                     socket.connect(InetSocketAddress(InetAddress.getLoopbackAddress(), server.localPort), 5_000)
                     socket.soTimeout = 15_000
-                    val link = DropLink(socket.getInputStream(), socket.getOutputStream(), Role.SENDER)
+                    trace("OUT: connected to $host:$port")
+            val link = DropLink(socket.getInputStream(), socket.getOutputStream(), Role.SENDER)
                     link.handshake(localCapabilities())
                     val entry = FileEntry(1u, payload.size.toLong(), "application/octet-stream", "selftest.bin", payloadHash)
                     val manifest = Manifest(listOf(entry))
                     link.sendOffer(manifest)
                     if (!link.awaitAccept()) throw IOException("declined")
                     link.sendFile(entry, payload.inputStream())
-                    link.sendDone(manifest.manifestHash())
+                    trace("OUT: chunks sent")
+            link.sendDone(manifest.manifestHash())
                     if (!link.awaitAck()) throw IOException("no ack")
                 }
 
