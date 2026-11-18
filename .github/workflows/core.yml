@@ -1,4 +1,4 @@
-name: Core CI
+name: Android CI
 
 on:
   push:
@@ -23,3 +23,6 @@ jobs:
 
       - name: Build and test core
         run: gradle :core:check --no-daemon
+
+      - name: Assemble demo app
+        run: gradle :app:assembleDebug --no-daemon

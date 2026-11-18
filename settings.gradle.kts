@@ -14,3 +14,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "morph"
 include(":core")
+include(":app")

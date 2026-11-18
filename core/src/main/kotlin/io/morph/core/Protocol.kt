@@ -40,6 +40,9 @@ enum class ShellId(val code: Int) {
     HYPEROS(0x02),
     NOTHING_OS(0x03),
     ONE_UI(0x04),
+    COLOROS(0x05),
+    ORIGINOS(0x06),
+    HARMONYOS(0x07),
     UNKNOWN(0xFF);
 
     companion object {

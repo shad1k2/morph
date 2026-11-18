@@ -18,6 +18,9 @@ protocol behaviour — only colors, type, shape and motion.
 | `Build.MANUFACTURER == "Xiaomi"` or `ro.miui.ui.version.name` present | `HYPEROS` (`0x02`) |
 | `Build.BRAND == "Nothing"` or `ro.nothing.build.*` present | `NOTHING_OS` (`0x03`) |
 | `Build.MANUFACTURER == "samsung"` | `ONE_UI` (`0x04`) |
+| `Build.MANUFACTURER == "OPPO"` / `"OnePlus"` | `COLOROS` (`0x05`) |
+| `Build.MANUFACTURER == "vivo"` | `ORIGINOS` (`0x06`) |
+| `Build.MANUFACTURER == "HUAWEI"` | `HARMONYOS` (`0x07`) |
 | anything else | `UNKNOWN` (`0xFF`) → fallback pack |
 
 Detection is cached per process; `shell_id` from the peer overrides the local
@@ -25,17 +28,16 @@ guess for the **shared** confirmation UI.
 
 ## 3. Design tokens
 
-| Token | Pixel | HyperOS | Nothing OS | OneUI | Fallback |
-|---|---|---|---|---|---|
-| Background | dynamic surface | `#0E0E10` | `#1B1B1D` | `#131316` | `#121212` |
-| Accent | Monet primary | `#FF6900` | `#D71921` | `#42A5F5` | `#6750A4` |
-| Surface style | tonal, soft shadow | liquid glass, blur 24dp | flat, 1px outline | elevated card | Material 3 default |
-| Corner radius | 28dp | 32dp + highlight | 20dp | 26dp | 16dp |
-| Headline font | Google Sans / Geist | MiSans | **NDot 57** | Samsung One | system sans |
-| Body font | Roboto / Geist | MiSans | **Geist** | Samsung One | system sans |
-| Meta font | Geist Mono | MiSans Mono | **Geist Mono** | system mono | monospace |
-| Motion | Material expressive ease | spring + specular sweep | snap, 120 ms | overshoot spring | standard ease |
-| Tap feedback | Material ripple | expanding glass ring | NDot pulse grid | circular ripple | ripple |
+| Token | Pixel | HyperOS | One UI | ColorOS | OriginOS | HarmonyOS | Nothing OS |
+|---|---|---|---|---|---|---|---|
+| Background | dynamic surface | `#0E0E10` | `#0F1216` | `#0B0D0F` | `#101215` | `#1A1A1C` (starry gray) | `#1B1B1D` |
+| Accent | Monet primary | `#FF6900` | `#1428A0` | `#00A651` | `#2D6BFF` | `#C90016` | `#D71921` |
+| Surface | tonal, soft shadow | glass, blur 24dp | pill cards, blur | natural light, texture | frosted gradient | layered translucent | flat, 1px outline |
+| Radius | 28dp | 32dp + highlight | 34dp pill | 26dp | 30dp | 18dp | 20dp |
+| Headline | Google Sans / Geist | MiSans | Samsung One | OPPO Sans | vivo Sans | HarmonyOS Sans | **NDot 57** |
+| Body | Roboto / Geist | MiSans | Samsung One | OPPO Sans | vivo Sans | HarmonyOS Sans | **Geist** |
+| Meta | Geist Mono | MiSans Mono | system mono | system mono | system mono | system mono | **Geist Mono** |
+| Motion | expressive ease | specular sweep | soft layered | light/shadow flow | gentle drift | precise fade | snap, 120 ms |
 
 ## 4. Shared confirmation screen
 

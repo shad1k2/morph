@@ -127,6 +127,9 @@ u8[] capabilities_blob     (optional, TLV)
 | `0x02` | Xiaomi HyperOS (Liquid Glass) |
 | `0x03` | Nothing OS (NDot/Geist) |
 | `0x04` | Samsung OneUI |
+| `0x05` | OPPO ColorOS |
+| `0x06` | vivo OriginOS |
+| `0x07` | Huawei HarmonyOS / EMUI |
 | `0xFF` | Unknown / fallback theme |
 
 `shell_id` is **advisory**: it changes UI only, never transport behaviour.
