@@ -54,7 +54,13 @@ full-screen activity, so the app underneath keeps running.
 
 ## Transport
 
-v0.3 ships a working path that needs nothing but the same Wi-Fi network:
+v0.3 ships a working path. Tap two phones to hand off the address without
+picking a device: MORPH emulates a Type-4 NDEF tag over HCE
+(AID `D2760000850101`) containing `MORPH/1`, model, IP, TCP port and shell_id.
+The other phone reads it, opens the file picker and connects directly. Both
+phones still need to be on the same Wi-Fi for the payload transfer.
+
+The data path itself:
 
 ```
 mDNS (_morph._tcp) -> peer list          (NSD on Android)
@@ -69,9 +75,8 @@ DONE / ACK         -> manifest hash verified, file finalized
 Received files land in `Downloads/MORPH` through MediaStore, so they survive
 reboots and show up in Files. The card shows real bytes/percent, not a timer.
 
-The NFC + BLE + Wi-Fi Direct bootstrap described in [`PROTOCOL.md`](docs/PROTOCOL.md)
-is still the target for v0.4: a physical tap removes the "which device do I
-pick?" problem and gives the session a natural MITM-resistant start.
+BLE control and Wi-Fi Direct/Aware bulk transfer from [`PROTOCOL.md`](docs/PROTOCOL.md)
+are still the target for v0.4.
 
 ### Self-test
 
