@@ -79,6 +79,12 @@ Settings → Transmission → **SELF-TEST** runs a full 512 KB encrypted transfe
 over loopback TCP on one phone. If it prints `Loopback OK`, framing, key
 agreement, AEAD and file reassembly all work.
 
+**E2E RECEIVE TEST** goes further: it advertises `_morph._tcp`, resolves this
+phone over mDNS, then sends a 256 KB file to its own receiver through TCP,
+X25519 + AES-GCM and MediaStore. It reports the saved file name, and the file
+lands in `Downloads/MORPH`. This checks the whole app-level receive path on one
+device; sending between two phones uses the identical code.
+
 ## Repository layout (planned)
 
 ```
