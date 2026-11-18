@@ -21,12 +21,12 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.ViewModelStoreOwner
-import androidx.lifecycle.ViewTreeLifecycleOwner
-import androidx.lifecycle.ViewTreeViewModelStoreOwner
+import androidx.lifecycle.setViewTreeLifecycleOwner
+import androidx.lifecycle.setViewTreeViewModelStoreOwner
 import androidx.savedstate.SavedStateRegistry
 import androidx.savedstate.SavedStateRegistryController
 import androidx.savedstate.SavedStateRegistryOwner
-import androidx.savedstate.ViewTreeSavedStateRegistryOwner
+import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import kotlinx.coroutines.delay
 
 /**
@@ -67,9 +67,9 @@ class OverlayService : Service() {
 
         val view = ComposeView(this).apply {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
-            ViewTreeLifecycleOwner.set(this, overlayOwners)
-            ViewTreeSavedStateRegistryOwner.set(this, overlayOwners)
-            ViewTreeViewModelStoreOwner.set(this, overlayOwners)
+            setViewTreeLifecycleOwner(overlayOwners)
+            setViewTreeSavedStateRegistryOwner(overlayOwners)
+            setViewTreeViewModelStoreOwner(overlayOwners)
             setContent {
                 val theme = ThemeRegistry.get(ShellDetector.detect())
                 val device = demoDevices.first()

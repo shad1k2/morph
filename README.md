@@ -41,6 +41,16 @@ Every pack carries its own silhouette and brand oval, not just a different
 accent: light One UI/ColorOS, glass HyperOS/OriginOS, layered HarmonyOS, flat
 Nothing OS and Pixel.
 
+## Quick Settings tile
+
+Add **MORPH drop** to the shade (swipe down twice → pencil → drag the tile in).
+Tapping it collapses the shade and shows the drop card over the current app.
+That needs the "Display over other apps" permission, granted once from the
+banner on the home screen or from Settings → Pop-up over apps.
+
+The overlay is a real `TYPE_APPLICATION_OVERLAY` window hosting Compose, not a
+full-screen activity, so the app underneath keeps running.
+
 ## Transport
 
 ```
