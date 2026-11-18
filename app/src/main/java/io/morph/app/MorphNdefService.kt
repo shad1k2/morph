@@ -21,7 +21,7 @@ class MorphNdefService : HostApduService() {
         // and keep it alive after the NFC session ends (a cached process can be
         // killed before the sender finishes picking a file).
         MorphEngine.start(applicationContext)
-        MorphEngine.showReady(applicationContext)
+        MorphEngine.showReady()
         runCatching {
             ContextCompat.startForegroundService(
                 applicationContext,
