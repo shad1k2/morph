@@ -64,7 +64,7 @@ class MainActivity : ComponentActivity() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
         window.statusBarColor = Color.Transparent.toArgb()
         window.navigationBarColor = Color.Transparent.toArgb()
-        setContent { MorphApp() }
+        setContent { MorphRoot() }
 
         if (intent?.getBooleanExtra(EXTRA_ASK_OVERLAY, false) == true) {
             openOverlaySettings(this)
@@ -76,7 +76,7 @@ class MainActivity : ComponentActivity() {
 private enum class Screen { HOME, SETTINGS }
 
 @Composable
-private fun MorphApp() {
+private fun MorphRoot() {
     val context = LocalContext.current
     val detected: ShellId = remember { ShellDetector.detect() }
     var shell by remember { mutableStateOf(ThemePrefs.selected(context)) }
