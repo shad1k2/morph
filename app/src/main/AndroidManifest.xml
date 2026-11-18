@@ -54,6 +54,29 @@
             </intent-filter>
         </activity>
 
+        <!-- Absorbs the TAG_DISCOVERED intent on the HCE/tag-owning phone so the
+             system does not prompt "no application found for this tag". -->
+        <activity
+            android:name=".NfcTagOwnerActivity"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:noHistory="true"
+            android:taskAffinity="io.morph.app.tagowner"
+            android:theme="@style/Theme.Morph.Invisible">
+            <intent-filter>
+                <action android:name="android.nfc.action.TECH_DISCOVERED" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.nfc.action.TAG_DISCOVERED" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+
+            <meta-data
+                android:name="android.nfc.action.TECH_DISCOVERED"
+                android:resource="@xml/nfc_tech_filter" />
+        </activity>
+
         <activity
             android:name=".FilePickActivity"
             android:excludeFromRecents="true"
