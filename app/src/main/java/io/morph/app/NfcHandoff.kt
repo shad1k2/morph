@@ -54,7 +54,7 @@ object NfcHandoff {
 
     /** Reads either the legacy MIME record or the morph:// URI record. */
     fun decode(intent: Intent): Peer? {
-        val fromUri = decodeUri(intent.data)
+        val fromUri = decode(intent.data)
         if (fromUri != null) return fromUri
 
         if (intent.action != NfcAdapter.ACTION_NDEF_DISCOVERED) return null
@@ -64,7 +64,7 @@ object NfcHandoff {
     }
 
     /** Legacy path: MORPH/1 MIME record from older HCE builds. */
-    private fun decode(message: NdefMessage?): Peer? {
+    fun decode(message: NdefMessage?): Peer? {
         val record = message?.records?.firstOrNull { candidate ->
             val type = candidate.type ?: return@firstOrNull false
             String(type, Charsets.US_ASCII).equals(MIME, ignoreCase = true)
@@ -86,7 +86,7 @@ object NfcHandoff {
         )
     }
 
-    private fun decodeUri(uri: Uri?): Peer? {
+    fun decode(uri: Uri?): Peer? {
         if (uri == null || uri.scheme != "morph") return null
         val host = uri.getQueryParameter("h") ?: return null
         val port = uri.getQueryParameter("p")?.toIntOrNull() ?: return null

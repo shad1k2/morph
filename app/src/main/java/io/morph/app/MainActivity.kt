@@ -62,13 +62,14 @@ class MainActivity : ComponentActivity() {
     }
 
     private var nfcPeer by mutableStateOf<Peer?>(null)
+    private var nfcDebug by mutableStateOf<String?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, false)
         window.statusBarColor = Color.Transparent.toArgb()
         window.navigationBarColor = Color.Transparent.toArgb()
-        setContent { MorphRoot(nfcPeer) { nfcPeer = null } }
+        setContent { MorphRoot(nfcPeer, nfcDebug) { nfcPeer = null } }
 
         if (intent?.getBooleanExtra(EXTRA_ASK_OVERLAY, false) == true) {
             openOverlaySettings(this)
@@ -84,13 +85,31 @@ class MainActivity : ComponentActivity() {
 
     /** A tap against a MORPH tag hands us a peer instantly, without scanning. */
     private fun handleNfcIntent(intent: Intent?) {
-        if (intent?.action != NfcAdapter.ACTION_NDEF_DISCOVERED) return
-        Log.d("MORPH", "NFC intent: action=${intent.action} data=${intent.data}")
-        nfcPeer = NfcHandoff.decode(intent).also {
-            if (it != null) {
-                Log.d("MORPH", "NFC read: ${it.name} ${it.host}:${it.port}")
-                MorphEngine.note("NFC tap: ${it.name} at ${it.host}")
-            }
+        if (intent == null) return
+        val action = intent.action ?: ""
+
+        @Suppress("DEPRECATION")
+        val messages = intent.getParcelableArrayExtra(NfcAdapter.EXTRA_NDEF_MESSAGES)
+        val fromExtras = messages?.firstOrNull() as? NdefMessage
+
+        @Suppress("DEPRECATION")
+        val tag = intent.getParcelableExtra<Tag>(NfcAdapter.EXTRA_TAG)
+        val fromTag = runCatching { Ndef.get(tag)?.cachedNdefMessage }.getOrNull()
+
+        val message = fromExtras ?: fromTag
+        val parsed = NfcHandoff.decode(intent.data) ?: NfcHandoff.decode(message)
+
+        nfcDebug = buildString {
+            append("NFC ").append(action.removePrefix("android.nfc.action."))
+            append(" · data=").append(intent.data?.toString() ?: "-")
+            append(" · records=").append(message?.records?.size ?: 0)
+            append(" · peer=").append(parsed?.name ?: "none")
+        }
+        Log.d("MORPH", nfcDebug)
+
+        if (parsed != null) {
+            nfcPeer = parsed
+            MorphEngine.note("NFC tap: ${parsed.name} at ${parsed.host}")
         }
     }
 }
@@ -100,6 +119,7 @@ private enum class Screen { HOME, SETTINGS }
 @Composable
 private fun MorphRoot(
     nfcPeer: Peer? = null,
+    nfcDebug: String? = null,
     onNfcConsumed: () -> Unit = {},
 ) {
     val context = LocalContext.current
@@ -201,7 +221,7 @@ private fun MorphRoot(
                 Screen.HOME -> HomeScreen(
                     theme = theme,
                     peers = MorphEngine.peers,
-                    status = MorphEngine.status,
+                    status = nfcDebug ?: MorphEngine.status,
                     running = MorphEngine.running,
                     onPeerTap = chooseFileFor,
                     onSendFiles = {
