@@ -5,7 +5,6 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.nfc.NdefMessage
 import android.nfc.NfcAdapter
 import android.net.Uri
 import android.os.Build
@@ -86,9 +85,8 @@ class MainActivity : ComponentActivity() {
     /** A tap against a MORPH tag hands us a peer instantly, without scanning. */
     private fun handleNfcIntent(intent: Intent?) {
         if (intent?.action != NfcAdapter.ACTION_NDEF_DISCOVERED) return
-        @Suppress("DEPRECATION")
-        val messages = intent.getParcelableArrayExtra(NfcAdapter.EXTRA_NDEF_MESSAGES)
-        nfcPeer = NfcHandoff.decode(messages?.firstOrNull() as? NdefMessage).also {
+        Log.d("MORPH", "NFC intent: action=${intent.action} data=${intent.data}")
+        nfcPeer = NfcHandoff.decode(intent).also {
             if (it != null) {
                 Log.d("MORPH", "NFC read: ${it.name} ${it.host}:${it.port}")
                 MorphEngine.note("NFC tap: ${it.name} at ${it.host}")

@@ -37,6 +37,11 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="application/vnd.morph.drop" />
             </intent-filter>
+            <intent-filter>
+                <action android:name="android.nfc.action.NDEF_DISCOVERED" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="morph" />
+            </intent-filter>
         </activity>
 
         <!-- Own (empty) task so finishing it reveals the app the user came from
