@@ -18,7 +18,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -45,6 +47,9 @@ fun SettingsScreen(
     onSelfTest: () -> Unit,
     onE2E: () -> Unit,
     onRestartDiscovery: () -> Unit,
+    manualHost: String,
+    onManualHostChange: (String) -> Unit,
+    onManualSend: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val scroll = rememberScrollState()
@@ -195,6 +200,7 @@ fun SettingsScreen(
             ProtocolLine("Handshake", "X25519 → HKDF-SHA256", theme)
             ProtocolLine("Payload", "AES-256-GCM", theme)
             ProtocolLine("Storage", "Downloads/MORPH", theme)
+            ProtocolLine("Local IP", NfcHandoff.localAddress(LocalContext.current), theme)
 
             Spacer(Modifier.height(14.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -225,6 +231,34 @@ fun SettingsScreen(
                 fontSize = 10.sp,
                 lineHeight = 14.sp,
             )
+        }
+
+        Spacer(Modifier.height(18.dp))
+        MonoLabel("MANUAL HANDOFF (NO NFC)", theme.dim, size = 9, tracking = 1.4f)
+        Spacer(Modifier.height(10.dp))
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .shellSurface(theme, RoundedCornerShape(theme.radius))
+                .padding(18.dp)
+        ) {
+            Text(
+                "If NFC is not handled by the other phone, type the receiver's IP shown on its screen and pick a file.",
+                color = theme.dim,
+                fontFamily = theme.body ?: FontFamily.Default,
+                fontSize = 11.sp,
+                lineHeight = 16.sp,
+            )
+            Spacer(Modifier.height(10.dp))
+            TextField(
+                value = manualHost,
+                onValueChange = onManualHostChange,
+                label = { Text("Receiver IP, e.g. 192.168.0.11") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(Modifier.height(10.dp))
+            PrimaryAction("SEND TO THIS IP", theme, Modifier.fillMaxWidth()) { onManualSend() }
         }
 
         Spacer(Modifier.height(18.dp))

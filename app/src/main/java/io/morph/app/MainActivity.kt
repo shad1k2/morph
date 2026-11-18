@@ -110,6 +110,7 @@ private fun MorphRoot(
     var screen by remember { mutableStateOf(Screen.HOME) }
     var overlayGranted by remember { mutableStateOf(Settings.canDrawOverlays(context)) }
     var pendingPeer by remember { mutableStateOf<Peer?>(null) }
+    var manualHost by remember { mutableStateOf("") }
 
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
@@ -243,6 +244,24 @@ private fun MorphRoot(
                     onRestartDiscovery = {
                         startReceiving(context)
                         MorphEngine.refreshDiscovery()
+                    },
+                    manualHost = manualHost,
+                    onManualHostChange = { manualHost = it },
+                    onManualSend = {
+                        val host = manualHost.trim()
+                        if (host.isEmpty()) {
+                            MorphEngine.note("Enter the receiver IP first")
+                        } else {
+                            chooseFileFor(
+                                Peer(
+                                    id = "manual:$host",
+                                    name = host,
+                                    host = host,
+                                    port = MorphEngine.port,
+                                    shell = io.morph.core.ShellId.UNKNOWN,
+                                )
+                            )
+                        }
                     },
                 )
             }
