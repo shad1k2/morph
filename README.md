@@ -10,7 +10,8 @@ The transport is designed as a hybrid: an **NFC tap** creates a trusted session,
 **BLE** carries discovery / proximity / control messages, and **Wi‑Fi Aware or
 Wi‑Fi Direct** moves the actual payload. The wire protocol is our own —
 [`DROP/1`](docs/PROTOCOL.md). Architecture and language choices are in
-[`ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+[`ARCHITECTURE.md`](docs/ARCHITECTURE.md); shell design packs in
+[`THEMES.md`](docs/THEMES.md).
 
 > Status: early design. Architecture and protocol spec first, code next.
 
