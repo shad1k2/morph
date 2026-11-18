@@ -26,3 +26,9 @@ jobs:
 
       - name: Assemble demo app
         run: gradle :app:assembleDebug --no-daemon
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: morph-debug
+          path: app/build/outputs/apk/debug/*.apk
