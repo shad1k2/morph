@@ -1,11 +1,13 @@
 package io.morph.app
 
+import android.Manifest
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
-import android.provider.OpenableColumns
 import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -21,14 +23,13 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -44,13 +45,13 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import androidx.compose.ui.platform.LocalLifecycleOwner
 import io.morph.core.ShellId
-import kotlinx.coroutines.delay
 
 class MainActivity : ComponentActivity() {
 
@@ -68,6 +69,7 @@ class MainActivity : ComponentActivity() {
         if (intent?.getBooleanExtra(EXTRA_ASK_OVERLAY, false) == true) {
             openOverlaySettings(this)
         }
+        startReceiving(this)
     }
 }
 
@@ -77,34 +79,54 @@ private enum class Screen { HOME, SETTINGS }
 private fun MorphApp() {
     val context = LocalContext.current
     val detected: ShellId = remember { ShellDetector.detect() }
-    var shell by remember { mutableStateOf(detected) }
+    var shell by remember { mutableStateOf(ThemePrefs.selected(context)) }
     val theme = ThemeRegistry.get(shell)
 
     var screen by remember { mutableStateOf(Screen.HOME) }
-    var transfer by remember { mutableStateOf<TransferUi?>(null) }
-    var phase by remember { mutableStateOf(TransferPhase.PROMPT) }
-    var progress by remember { mutableStateOf(0f) }
     var overlayGranted by remember { mutableStateOf(Settings.canDrawOverlays(context)) }
+    var pendingPeer by remember { mutableStateOf<Peer?>(null) }
 
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 overlayGranted = Settings.canDrawOverlays(context)
+                // The in-app card takes over; drop the system window if it is up.
+                runCatching {
+                    context.startService(
+                        Intent(context, OverlayService::class.java)
+                            .setAction(OverlayService.ACTION_HIDE)
+                    )
+                }
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    val requestOverlay: () -> Unit = {
-        openOverlaySettings(context)
+    // The receive side stays alive while the user is in other apps.
+    LaunchedEffect(Unit) {
+        MorphEngine.start(context)
+        runCatching { startReceiving(context) }
     }
+
+    val notifications = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { }
+    LaunchedEffect(Unit) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            notifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
+    val requestOverlay: () -> Unit = { openOverlaySettings(context) }
     val testOverlay: () -> Unit = {
         if (Settings.canDrawOverlays(context)) {
-            context.startService(
-                Intent(context, OverlayService::class.java).setAction(OverlayService.ACTION_SHOW)
-            )
+            MorphEngine.start(context)
+            MorphEngine.showReady()
         } else {
             openOverlaySettings(context)
         }
@@ -119,26 +141,19 @@ private fun MorphApp() {
         }
     }
 
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
-        if (uri != null) {
-            val name = queryDisplayName(context, uri)
-            val target = demoDevices.firstOrNull() ?: return@rememberLauncherForActivityResult
-            progress = 0f
-            phase = TransferPhase.RUNNING
-            transfer = TransferUi.Outgoing(target, name, "2.4 MB")
+    val picker = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        val peer = pendingPeer
+        if (uri != null && peer != null) {
+            MorphEngine.send(context, peer, uri)
         }
+        pendingPeer = null
     }
 
-    // Fake progress until the DROP/1 data channel is wired.
-    LaunchedEffect(transfer, phase) {
-        if (phase == TransferPhase.RUNNING) {
-            progress = 0f
-            repeat(100) { step ->
-                delay(22)
-                progress = (step + 1) / 100f
-            }
-            phase = TransferPhase.DONE
-        }
+    val chooseFileFor: (Peer) -> Unit = { peer ->
+        pendingPeer = peer
+        picker.launch(arrayOf("*/*"))
     }
 
     Box(Modifier.fillMaxSize().background(Brush.verticalGradient(theme.background))) {
@@ -153,18 +168,23 @@ private fun MorphApp() {
             when (screen) {
                 Screen.HOME -> HomeScreen(
                     theme = theme,
-                    devices = demoDevices,
-                    onDeviceTap = { device ->
-                        progress = 0f
-                        phase = TransferPhase.PROMPT
-                        transfer = TransferUi.Incoming(
-                            device = device,
-                            fileName = "photo.jpg",
-                            totalFiles = 2,
-                            sizeLabel = "3.8 MB",
-                        )
+                    peers = MorphEngine.peers,
+                    status = MorphEngine.status,
+                    running = MorphEngine.running,
+                    onPeerTap = chooseFileFor,
+                    onSendFiles = {
+                        val peer = MorphEngine.peers.firstOrNull()
+                        if (peer != null) {
+                            chooseFileFor(peer)
+                        } else {
+                            MorphEngine.note("No phones nearby. Open MORPH on the other phone and keep both on the same Wi-Fi.")
+                        }
                     },
-                    onSendFiles = { picker.launch(arrayOf("*/*")) },
+                    onRefresh = { MorphEngine.refreshDiscovery() },
+                    onReceive = {
+                        startReceiving(context)
+                        MorphEngine.showReady()
+                    },
                     onOpenSettings = { screen = Screen.SETTINGS },
                     overlayEnabled = overlayGranted,
                     onEnableOverlay = requestOverlay,
@@ -174,43 +194,53 @@ private fun MorphApp() {
                 Screen.SETTINGS -> SettingsScreen(
                     theme = theme,
                     detected = detected,
-                    onSelectShell = { shell = it },
+                    shell = shell,
+                    onSelectShell = {
+                        shell = it
+                        ThemePrefs.save(context, it)
+                    },
                     onBack = { screen = Screen.HOME },
                     overlayEnabled = overlayGranted,
                     onGrantOverlay = requestOverlay,
                     onTestOverlay = testOverlay,
+                    engineStatus = MorphEngine.status,
+                    engineRunning = MorphEngine.running,
+                    localPort = MorphEngine.port,
+                    selfTest = MorphEngine.selfTest,
+                    onSelfTest = { MorphEngine.runSelfTest(context) },
+                    onRestartDiscovery = {
+                        startReceiving(context)
+                        MorphEngine.refreshDiscovery()
+                    },
                 )
             }
         }
 
+        val drop = MorphEngine.drop
         AnimatedVisibility(
-            visible = transfer != null,
+            visible = drop != null,
             enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
             exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
         ) {
-            transfer?.let { current ->
+            drop?.let { current ->
                 TransferOverlay(
                     theme = theme,
-                    transfer = current,
-                    phase = phase,
-                    progress = progress,
-                    onAccept = {
-                        progress = 0f
-                        phase = TransferPhase.RUNNING
-                    },
-                    onDecline = {
-                        transfer = null
-                        phase = TransferPhase.PROMPT
-                        progress = 0f
-                    },
-                    onDone = {
-                        transfer = null
-                        phase = TransferPhase.PROMPT
-                        progress = 0f
-                    },
+                    drop = current,
+                    onAccept = { MorphEngine.acceptIncoming() },
+                    onDecline = { MorphEngine.declineIncoming() },
+                    onDone = { MorphEngine.dismiss() },
                 )
             }
         }
+    }
+}
+
+private fun startReceiving(context: Context) {
+    runCatching {
+        ContextCompat.startForegroundService(
+            context,
+            Intent(context, MorphService::class.java),
+        )
     }
 }
 
@@ -256,17 +286,6 @@ private fun BoxScope.GlassBackdrop(theme: ShellTheme) {
                 RoundedCornerShape(50),
             )
     )
-}
-
-private fun queryDisplayName(context: Context, uri: Uri): String = try {
-    context.contentResolver
-        .query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
-        ?.use { cursor ->
-            if (cursor.moveToFirst()) cursor.getString(0) else null
-        }
-        ?: "file"
-} catch (t: Throwable) {
-    "file"
 }
 
 private fun openOverlaySettings(context: Context) {

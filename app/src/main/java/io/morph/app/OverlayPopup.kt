@@ -36,22 +36,26 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.morph.core.ShellId
 
-/** Compact pop-up that lives in an overlay window above other apps. */
+/**
+ * One card, used both by the system overlay and by the in-app layer.
+ * Everything it renders comes from [DropUi], i.e. from a real session.
+ */
 @Composable
 fun OverlayPopup(
     theme: ShellTheme,
-    device: NearbyDevice,
-    phase: TransferPhase,
-    progress: Float,
+    drop: DropUi,
     onAccept: () -> Unit,
     onDecline: () -> Unit,
     onDone: () -> Unit,
+    entrance: Boolean = true,
 ) {
-    var visible by remember { mutableStateOf(false) }
+    var visible by remember { mutableStateOf(!entrance) }
     LaunchedEffect(Unit) { visible = true }
 
     val shape = RoundedCornerShape(theme.radius)
-    val peer = ThemeRegistry.get(device.shell)
+    val peer = ThemeRegistry.get(drop.shell)
+    val phase = drop.phase
+    val incoming = drop.kind == DropKind.INCOMING
 
     AnimatedVisibility(
         visible = visible,
@@ -65,10 +69,13 @@ fun OverlayPopup(
                     .padding(horizontal = 18.dp, vertical = 16.dp)
             ) {
                 MonoLabel(
-                    when (phase) {
-                        TransferPhase.PROMPT -> "INCOMING DROP"
-                        TransferPhase.RUNNING -> "RECEIVING"
-                        TransferPhase.DONE -> "TRANSFER COMPLETE"
+                    when {
+                        drop.kind == DropKind.READY -> "VISIBLE ON THIS WI-FI"
+                        incoming && phase == TransferPhase.PROMPT -> "INCOMING DROP"
+                        incoming && phase == TransferPhase.RUNNING -> "RECEIVING"
+                        incoming -> "TRANSFER COMPLETE"
+                        phase == TransferPhase.RUNNING -> "SENDING"
+                        else -> "TRANSFER COMPLETE"
                     },
                     theme.accent,
                     size = 8,
@@ -76,12 +83,21 @@ fun OverlayPopup(
                 )
                 Spacer(Modifier.height(3.dp))
                 Text(
-                    when (phase) {
-                        TransferPhase.PROMPT -> if (theme.uppercaseHeadline) "DROP READY" else "Drop ready"
-                        TransferPhase.RUNNING -> "In flight"
-                        TransferPhase.DONE -> "All yours"
+                    when {
+                        drop.kind == DropKind.READY ->
+                            if (theme.uppercaseHeadline) "DROP READY" else "Drop ready"
+                        incoming && phase == TransferPhase.PROMPT ->
+                            if (theme.uppercaseHeadline) "DROP READY" else "Drop ready"
+                        incoming && phase == TransferPhase.RUNNING -> "In flight"
+                        incoming -> if (drop.ok) "All yours" else "Failed"
+                        phase == TransferPhase.RUNNING -> "In flight"
+                        else -> if (drop.ok) "Delivered" else "Not delivered"
                     },
-                    color = if (theme.cardStyle == CardStyle.FLAT && theme.shell != ShellId.NOTHING_OS) theme.accent else theme.text,
+                    color = if (theme.cardStyle == CardStyle.FLAT && theme.shell != ShellId.NOTHING_OS) {
+                        theme.accent
+                    } else {
+                        theme.text
+                    },
                     fontFamily = theme.headline ?: FontFamily.Default,
                     fontWeight = FontWeight.Bold,
                     fontSize = 24.sp,
@@ -96,51 +112,76 @@ fun OverlayPopup(
                     Box(Modifier.size(6.dp).background(peer.brandBg, RoundedCornerShape(50)))
                     Spacer(Modifier.width(6.dp))
                     Text(
-                        "${device.name} · ${peer.name}",
+                        when (drop.kind) {
+                            DropKind.READY -> "This device · ${peer.name}"
+                            DropKind.INCOMING -> "${drop.peerName} · ${peer.name}"
+                            DropKind.OUTGOING -> "to ${drop.peerName} · ${peer.name}"
+                        },
                         color = theme.dim,
                         fontFamily = theme.body ?: FontFamily.Default,
                         fontSize = 11.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
 
                 Spacer(Modifier.height(12.dp))
-                OverlayFileRow(theme, phase, progress)
+                if (drop.kind == DropKind.READY) {
+                    ReadyRow(theme)
+                } else {
+                    OverlayFileRow(theme, drop)
+                }
 
-                if (phase != TransferPhase.PROMPT) {
+                if (drop.kind != DropKind.READY && phase != TransferPhase.PROMPT) {
                     Spacer(Modifier.height(12.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            if (phase == TransferPhase.DONE) "100%" else "${(progress * 100).toInt()}%",
+                            if (phase == TransferPhase.DONE) "100%" else "${(drop.progress * 100).toInt()}%",
                             color = theme.text,
                             fontFamily = FontFamily.Monospace,
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
                         )
                         Spacer(Modifier.weight(1f))
-                        MonoLabel("AES-256-GCM", theme.dim, size = 8)
+                        MonoLabel(
+                            if (phase == TransferPhase.DONE) "AES-256-GCM · VERIFIED" else "AES-256-GCM",
+                            theme.dim,
+                            size = 8,
+                        )
                     }
                     Spacer(Modifier.height(7.dp))
-                    OverlayProgress(theme, if (phase == TransferPhase.DONE) 1f else progress)
+                    OverlayProgress(theme, if (phase == TransferPhase.DONE) 1f else drop.progress)
+                }
+
+                drop.message?.let { message ->
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        message,
+                        color = theme.dim,
+                        fontFamily = theme.body ?: FontFamily.Default,
+                        fontSize = 10.sp,
+                        lineHeight = 14.sp,
+                    )
                 }
 
                 Spacer(Modifier.height(14.dp))
-                when (phase) {
-                    TransferPhase.PROMPT -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                when {
+                    drop.kind == DropKind.READY -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        PrimaryAction("CLOSE", theme, Modifier.weight(1f)) { onDone() }
+                    }
+
+                    phase == TransferPhase.PROMPT -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         PrimaryAction("ACCEPT", theme, Modifier.weight(1f)) { onAccept() }
                         SecondaryAction("DECLINE", theme, Modifier.weight(1f)) { onDecline() }
                     }
 
-                    TransferPhase.RUNNING -> SecondaryAction(
+                    phase == TransferPhase.RUNNING -> SecondaryAction(
                         "CANCEL",
                         theme,
                         Modifier.fillMaxWidth(),
                     ) { onDecline() }
 
-                    TransferPhase.DONE -> PrimaryAction(
-                        "DONE",
-                        theme,
-                        Modifier.fillMaxWidth(),
-                    ) { onDone() }
+                    else -> PrimaryAction("DONE", theme, Modifier.fillMaxWidth()) { onDone() }
                 }
             }
 
@@ -155,7 +196,53 @@ fun OverlayPopup(
 }
 
 @Composable
-private fun OverlayFileRow(theme: ShellTheme, phase: TransferPhase, progress: Float) {
+private fun ReadyRow(theme: ShellTheme) {
+    val shape = RoundedCornerShape(theme.radius * 0.5f)
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(if (theme.isDark) theme.surfaceAlt.copy(alpha = 0.55f) else theme.surfaceAlt)
+            .border(1.dp, theme.border.copy(alpha = 0.6f), shape)
+            .padding(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier
+                .size(40.dp)
+                .clip(RoundedCornerShape(if (theme.shell == ShellId.NOTHING_OS) 3.dp else 11.dp))
+                .background(theme.accent.copy(alpha = 0.16f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                "↑↓",
+                color = theme.accent,
+                fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.Bold,
+                fontSize = 14.sp,
+            )
+        }
+        Spacer(Modifier.width(10.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                "Listening for drops",
+                color = theme.text,
+                fontFamily = theme.body ?: FontFamily.Default,
+                fontWeight = FontWeight.Medium,
+                fontSize = 13.sp,
+            )
+            Text(
+                "Ask the other phone to tap this one",
+                color = theme.dim,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 9.sp,
+            )
+        }
+    }
+}
+
+@Composable
+private fun OverlayFileRow(theme: ShellTheme, drop: DropUi) {
     val shape = RoundedCornerShape(theme.radius * 0.5f)
     Row(
         Modifier
@@ -178,7 +265,7 @@ private fun OverlayFileRow(theme: ShellTheme, phase: TransferPhase, progress: Fl
             contentAlignment = Alignment.Center,
         ) {
             Text(
-                "JPG",
+                fileBadge(drop.fileName),
                 color = if (theme.shell == ShellId.NOTHING_OS) Color(0xFF101012) else theme.onAccent,
                 fontFamily = FontFamily.Monospace,
                 fontWeight = FontWeight.Bold,
@@ -188,7 +275,7 @@ private fun OverlayFileRow(theme: ShellTheme, phase: TransferPhase, progress: Fl
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
             Text(
-                "photo.jpg",
+                drop.fileName,
                 color = theme.text,
                 fontFamily = theme.body ?: FontFamily.Default,
                 fontWeight = FontWeight.Medium,
@@ -197,16 +284,16 @@ private fun OverlayFileRow(theme: ShellTheme, phase: TransferPhase, progress: Fl
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                "2 files · 3.8 MB",
+                drop.sizeLabel,
                 color = theme.dim,
                 fontFamily = FontFamily.Monospace,
                 fontSize = 9.sp,
             )
         }
         Text(
-            when (phase) {
-                TransferPhase.PROMPT -> "2"
-                TransferPhase.RUNNING -> "${(progress * 100).toInt()}%"
+            when (drop.phase) {
+                TransferPhase.PROMPT -> "NEW"
+                TransferPhase.RUNNING -> "${(drop.progress * 100).toInt()}%"
                 TransferPhase.DONE -> "OK"
             },
             color = theme.dim,

@@ -13,9 +13,10 @@ Wi‑Fi Direct** moves the actual payload. The wire protocol is our own —
 [`ARCHITECTURE.md`](docs/ARCHITECTURE.md); shell design packs in
 [`THEMES.md`](docs/THEMES.md).
 
-> Status: `morph-core` implemented and tested; `morph-app` is a complete,
-> shell-aware UI (radar, file picker, drop overlay, settings). Transfer
-> transports are the next step.
+> Status: `morph-core` implemented and tested; `morph-app` v0.3 actually moves
+> files between two Android phones on the same Wi-Fi (mDNS + TCP + X25519 +
+> AES-256-GCM), saves them to `Downloads/MORPH`, and shows the drop card in a
+> system overlay from the Quick Settings tile.
 
 ## Design principle
 
@@ -34,10 +35,10 @@ in the receiver's visual language.
 | Nothing OS | NDot dot-matrix, Geist body, `#1B1B1D` + `#D71921` |
 
 `app/` is the Android client. It detects the local shell and re-skins the whole
-flow: hero + radar on the home screen, nearby device list, a real SAF file
-picker, an AirDrop-style drop card with accept/decline and progress, and a
-settings screen with per-shell preview, transport toggles and protocol info.
-Every pack carries its own silhouette and brand oval, not just a different
+flow: hero + live radar fed by mDNS, discovered phones, a real SAF file picker,
+an AirDrop-style drop card with accept/decline and real progress, and a settings
+screen with per-shell preview, engine status, loopback self-test and protocol
+info. Every pack carries its own silhouette and brand oval, not just a different
 accent: light One UI/ColorOS, glass HyperOS/OriginOS, layered HarmonyOS, flat
 Nothing OS and Pixel.
 
@@ -53,15 +54,30 @@ full-screen activity, so the app underneath keeps running.
 
 ## Transport
 
+v0.3 ships a working path that needs nothing but the same Wi-Fi network:
+
 ```
-NFC tap      -> session_id, BLE service UUID, optional Wi-Fi credentials
-BLE GATT     -> HELLO / CAPS / OFFER / ACK / PROGRESS / ABORT
-Wi-Fi Direct -> CHUNK stream, RESUME, DONE (SHA-256 manifest verification)
+mDNS (_morph._tcp) -> peer list          (NSD on Android)
+TCP :44771         -> DropLink session
+HELLO              -> X25519 public keys
+CAPS               -> shell_id, flags, MTU
+OFFER / ACCEPT     -> manifest with SHA-256 per file
+CHUNK*             -> AES-256-GCM frames, 32 KiB payloads
+DONE / ACK         -> manifest hash verified, file finalized
 ```
 
-Why NFC: a physical tap removes the "which device do I pick?" problem and gives
-the session a natural MITM-resistant bootstrap. Why not BLE-only: its throughput
-is fine for links and contacts, not for photos and video.
+Received files land in `Downloads/MORPH` through MediaStore, so they survive
+reboots and show up in Files. The card shows real bytes/percent, not a timer.
+
+The NFC + BLE + Wi-Fi Direct bootstrap described in [`PROTOCOL.md`](docs/PROTOCOL.md)
+is still the target for v0.4: a physical tap removes the "which device do I
+pick?" problem and gives the session a natural MITM-resistant start.
+
+### Self-test
+
+Settings → Transmission → **SELF-TEST** runs a full 512 KB encrypted transfer
+over loopback TCP on one phone. If it prints `Loopback OK`, framing, key
+agreement, AEAD and file reassembly all work.
 
 ## Repository layout (planned)
 

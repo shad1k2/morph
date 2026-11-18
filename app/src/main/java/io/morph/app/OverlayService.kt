@@ -10,10 +10,6 @@ import android.provider.Settings
 import android.view.Gravity
 import android.view.WindowManager
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.lifecycle.Lifecycle
@@ -27,11 +23,11 @@ import androidx.savedstate.SavedStateRegistry
 import androidx.savedstate.SavedStateRegistryController
 import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
-import kotlinx.coroutines.delay
 
 /**
- * Shows the DROP pop-up in a real overlay window, above whatever app the user
- * is in. Triggered from the Quick Settings tile or from Settings → Test pop-up.
+ * Shows the real drop card in a TYPE_APPLICATION_OVERLAY window, above whatever
+ * app the user is in. Started when a session needs attention while MORPH itself
+ * is not in front (incoming offer, outgoing progress, QS tile).
  */
 class OverlayService : Service() {
 
@@ -50,7 +46,11 @@ class OverlayService : Service() {
         when (intent?.action) {
             ACTION_HIDE -> dismiss()
             else -> {
-                if (Settings.canDrawOverlays(this)) show() else stopSelf()
+                if (!Settings.canDrawOverlays(this) || MorphEngine.drop == null) {
+                    stopSelf()
+                } else {
+                    show()
+                }
             }
         }
         return START_NOT_STICKY
@@ -71,45 +71,19 @@ class OverlayService : Service() {
             setViewTreeSavedStateRegistryOwner(overlayOwners)
             setViewTreeViewModelStoreOwner(overlayOwners)
             setContent {
-                val theme = ThemeRegistry.get(ShellDetector.detect())
-                val device = demoDevices.first()
-                var phase by remember { mutableStateOf(TransferPhase.PROMPT) }
-                var progress by remember { mutableStateOf(0f) }
-
-                LaunchedEffect(phase) {
-                    when (phase) {
-                        TransferPhase.PROMPT -> {
-                            // AirDrop-like: the card does not stay forever.
-                            delay(15_000)
-                            dismiss()
-                        }
-
-                        TransferPhase.RUNNING -> {
-                            repeat(100) { step ->
-                                delay(20)
-                                progress = (step + 1) / 100f
-                            }
-                            phase = TransferPhase.DONE
-                            delay(1500)
-                            dismiss()
-                        }
-
-                        TransferPhase.DONE -> Unit
-                    }
+                val drop = MorphEngine.drop
+                if (drop == null) {
+                    LaunchedEffect(Unit) { dismiss() }
+                } else {
+                    val theme = ThemeRegistry.get(ThemePrefs.selected(this@OverlayService))
+                    OverlayPopup(
+                        theme = theme,
+                        drop = drop,
+                        onAccept = { MorphEngine.acceptIncoming() },
+                        onDecline = { MorphEngine.declineIncoming() },
+                        onDone = { MorphEngine.dismiss() },
+                    )
                 }
-
-                OverlayPopup(
-                    theme = theme,
-                    device = device,
-                    phase = phase,
-                    progress = progress,
-                    onAccept = {
-                        progress = 0f
-                        phase = TransferPhase.RUNNING
-                    },
-                    onDecline = { dismiss() },
-                    onDone = { dismiss() },
-                )
             }
         }
 

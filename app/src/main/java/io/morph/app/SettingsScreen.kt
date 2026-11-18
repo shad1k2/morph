@@ -19,10 +19,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -36,11 +32,18 @@ import io.morph.core.ShellId
 fun SettingsScreen(
     theme: ShellTheme,
     detected: ShellId,
+    shell: ShellId,
     onSelectShell: (ShellId) -> Unit,
     onBack: () -> Unit,
     overlayEnabled: Boolean,
     onGrantOverlay: () -> Unit,
     onTestOverlay: () -> Unit,
+    engineStatus: String,
+    engineRunning: Boolean,
+    localPort: Int,
+    selfTest: String?,
+    onSelfTest: () -> Unit,
+    onRestartDiscovery: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val scroll = rememberScrollState()
@@ -147,15 +150,77 @@ fun SettingsScreen(
             Modifier
                 .fillMaxWidth()
                 .shellSurface(theme, RoundedCornerShape(theme.radius))
+                .padding(18.dp)
         ) {
-            var nfc by remember { mutableStateOf(true) }
-            var ble by remember { mutableStateOf(true) }
-            var wifi by remember { mutableStateOf(true) }
-            ToggleRow("NFC tap to connect", "Android Beam successor", nfc, theme) { nfc = it }
-            Hairline(theme, Modifier.padding(horizontal = 16.dp))
-            ToggleRow("Bluetooth control", "Pairing and handshake", ble, theme) { ble = it }
-            Hairline(theme, Modifier.padding(horizontal = 16.dp))
-            ToggleRow("Wi-Fi Direct data", "Fast local file transfer", wifi, theme) { wifi = it }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    Modifier
+                        .size(6.dp)
+                        .background(
+                            if (engineRunning) theme.accent else theme.dim,
+                            RoundedCornerShape(50),
+                        )
+                )
+                Spacer(Modifier.width(7.dp))
+                Text(
+                    if (engineRunning) "Receiver running" else "Receiver stopped",
+                    color = theme.text,
+                    fontFamily = theme.body ?: FontFamily.Default,
+                    fontSize = 13.sp,
+                )
+                Spacer(Modifier.weight(1f))
+                MonoLabel(
+                    "TCP $localPort",
+                    theme.dim,
+                    size = 9,
+                    tracking = 0.8f,
+                )
+            }
+            Spacer(Modifier.height(6.dp))
+            Text(
+                engineStatus,
+                color = theme.dim,
+                fontFamily = theme.body ?: FontFamily.Default,
+                fontSize = 11.sp,
+                lineHeight = 16.sp,
+            )
+
+            Spacer(Modifier.height(12.dp))
+            Hairline(theme)
+            Spacer(Modifier.height(12.dp))
+
+            ProtocolLine("Discovery", "mDNS · _morph._tcp", theme)
+            ProtocolLine("Data", "TCP $localPort", theme)
+            ProtocolLine("Handshake", "X25519 → HKDF-SHA256", theme)
+            ProtocolLine("Payload", "AES-256-GCM", theme)
+            ProtocolLine("Storage", "Downloads/MORPH", theme)
+
+            Spacer(Modifier.height(14.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                PrimaryAction("SELF-TEST", theme, Modifier.weight(1f)) { onSelfTest() }
+                SecondaryAction("RESCAN", theme, Modifier.weight(1f)) { onRestartDiscovery() }
+            }
+
+            selfTest?.let { result ->
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    result,
+                    color = if (result.contains("OK")) theme.accent else theme.dim,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 10.sp,
+                    lineHeight = 14.sp,
+                )
+            }
+
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "Self-test runs a full encrypted transfer over loopback TCP on this phone — " +
+                    "no second device needed.",
+                color = theme.dim,
+                fontFamily = theme.body ?: FontFamily.Default,
+                fontSize = 10.sp,
+                lineHeight = 14.sp,
+            )
         }
 
         Spacer(Modifier.height(18.dp))
@@ -237,7 +302,7 @@ fun SettingsScreen(
                 .shellSurface(theme, RoundedCornerShape(theme.radius))
                 .padding(18.dp)
         ) {
-            ProtocolLine("Spec", "DROP/1 · v0.2", theme)
+            ProtocolLine("Spec", "DROP/1 · v0.3", theme)
             ProtocolLine("Handshake", "X25519 → HKDF-SHA256", theme)
             ProtocolLine("Payload", "AES-256-GCM", theme)
             ProtocolLine("Relay", "none · direct only", theme)
@@ -251,7 +316,7 @@ fun SettingsScreen(
         }
 
         Spacer(Modifier.height(22.dp))
-        MonoLabel("MORPH APP v0.1 · UI PREVIEW", theme.dim, size = 8, tracking = 1.1f)
+        MonoLabel("MORPH APP v0.3 · WORKING BUILD", theme.dim, size = 8, tracking = 1.1f)
         Spacer(Modifier.height(24.dp))
     }
 }
@@ -301,61 +366,6 @@ private fun ThemeTile(
             color = pack.dim,
             fontFamily = FontFamily.Monospace,
             fontSize = 9.sp,
-        )
-    }
-}
-
-@Composable
-private fun ToggleRow(
-    title: String,
-    subtitle: String,
-    checked: Boolean,
-    theme: ShellTheme,
-    onToggle: (Boolean) -> Unit,
-) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .clickable { onToggle(!checked) }
-            .padding(horizontal = 16.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text(
-                title,
-                color = theme.text,
-                fontFamily = theme.body ?: FontFamily.Default,
-                fontSize = 13.sp,
-            )
-            Text(
-                subtitle,
-                color = theme.dim,
-                fontFamily = theme.body ?: FontFamily.Default,
-                fontSize = 10.sp,
-            )
-        }
-        SwitchPill(checked, theme)
-    }
-}
-
-@Composable
-private fun SwitchPill(checked: Boolean, theme: ShellTheme) {
-    val shape = RoundedCornerShape(50)
-    Box(
-        Modifier
-            .width(40.dp)
-            .height(24.dp)
-            .clip(shape)
-            .background(if (checked) theme.accent else theme.surfaceAlt)
-            .border(1.dp, if (checked) theme.accent else theme.border, shape)
-            .padding(3.dp),
-        contentAlignment = if (checked) Alignment.CenterEnd else Alignment.CenterStart,
-    ) {
-        Box(
-            Modifier
-                .size(18.dp)
-                .clip(RoundedCornerShape(50))
-                .background(if (checked) theme.onAccent else theme.dim)
         )
     }
 }

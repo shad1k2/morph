@@ -7,15 +7,18 @@ import androidx.activity.ComponentActivity
 
 /**
  * Invisible trampoline used by the Quick Settings tile: the shade collapses,
- * then the overlay service shows the pop-up. If the overlay permission is
- * missing, the main app opens the permission prompt instead.
+ * the receive service starts, and the ready card appears over the current app.
  */
 class DropTriggerActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        startForegroundService(Intent(this, MorphService::class.java))
+        MorphEngine.start(this)
+
         if (Settings.canDrawOverlays(this)) {
+            MorphEngine.showReady()
             startService(
                 Intent(this, OverlayService::class.java).setAction(OverlayService.ACTION_SHOW)
             )

@@ -34,6 +34,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.cos
@@ -42,9 +43,13 @@ import kotlin.math.sin
 @Composable
 fun HomeScreen(
     theme: ShellTheme,
-    devices: List<NearbyDevice>,
-    onDeviceTap: (NearbyDevice) -> Unit,
+    peers: List<Peer>,
+    status: String,
+    running: Boolean,
+    onPeerTap: (Peer) -> Unit,
     onSendFiles: () -> Unit,
+    onRefresh: () -> Unit,
+    onReceive: () -> Unit,
     onOpenSettings: () -> Unit,
     overlayEnabled: Boolean,
     onEnableOverlay: () -> Unit,
@@ -83,7 +88,7 @@ fun HomeScreen(
             BrandOval(theme)
         }
 
-        Spacer(Modifier.height(26.dp))
+        Spacer(Modifier.height(22.dp))
 
         Text(
             if (theme.uppercaseHeadline) "DROP ANYTHING" else "Drop anything.",
@@ -135,16 +140,35 @@ fun HomeScreen(
         }
 
         Spacer(Modifier.height(6.dp))
-        Radar(theme, devices)
-        MonoLabel(
-            "VISIBLE TO ${devices.size} NEARBY DEVICES",
-            theme.dim,
-            modifier = Modifier.fillMaxWidth(),
-            size = 8,
-            tracking = 1.2f,
-        )
+        Radar(theme, peers)
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier
+                    .size(5.dp)
+                    .background(if (running) theme.accent else theme.dim, RoundedCornerShape(50))
+            )
+            Spacer(Modifier.width(6.dp))
+            MonoLabel(
+                status.uppercase(),
+                theme.dim,
+                modifier = Modifier.weight(1f),
+                size = 8,
+                tracking = 0.9f,
+            )
+            MonoLabel(
+                "RESCAN",
+                theme.accent,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .border(1.dp, theme.accent.copy(alpha = 0.4f), RoundedCornerShape(50))
+                    .clickable { onRefresh() }
+                    .padding(horizontal = 8.dp, vertical = 3.dp),
+                size = 8,
+                tracking = 0.8f,
+            )
+        }
 
-        Spacer(Modifier.height(18.dp))
+        Spacer(Modifier.height(16.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             MonoLabel("NEARBY", theme.dim, size = 9, tracking = 1.4f)
             Spacer(Modifier.width(10.dp))
@@ -152,9 +176,13 @@ fun HomeScreen(
         }
         Spacer(Modifier.height(10.dp))
 
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            devices.forEach { device ->
-                DeviceRow(theme, device) { onDeviceTap(device) }
+        if (peers.isEmpty()) {
+            EmptyState(theme, running)
+        } else {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                peers.forEach { peer ->
+                    PeerRow(theme, peer) { onPeerTap(peer) }
+                }
             }
         }
 
@@ -162,11 +190,11 @@ fun HomeScreen(
 
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             PrimaryAction("SEND FILES", theme, Modifier.weight(1f)) { onSendFiles() }
-            SecondaryAction("RECEIVE", theme, Modifier.weight(0.62f)) { }
+            SecondaryAction("RECEIVE", theme, Modifier.weight(0.62f)) { onReceive() }
         }
         Spacer(Modifier.height(10.dp))
         MonoLabel(
-            "NFC TAP · BLE CONTROL · WI-FI DIRECT DATA",
+            "M-DNS DISCOVERY · TCP DATA · AES-256-GCM",
             theme.dim,
             modifier = Modifier.fillMaxWidth(),
             size = 8,
@@ -177,7 +205,39 @@ fun HomeScreen(
 }
 
 @Composable
-private fun Radar(theme: ShellTheme, devices: List<NearbyDevice>) {
+private fun EmptyState(theme: ShellTheme, running: Boolean) {
+    val shape = RoundedCornerShape(theme.radius * 0.55f)
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .shellSurface(theme, shape)
+            .padding(16.dp)
+    ) {
+        Text(
+            if (running) "Looking for phones…" else "Receiver is off",
+            color = theme.text,
+            fontFamily = theme.body ?: FontFamily.Default,
+            fontWeight = FontWeight.Medium,
+            fontSize = 13.sp,
+        )
+        Spacer(Modifier.height(3.dp))
+        Text(
+            if (running) {
+                "Open MORPH on the other phone and keep both on the same Wi-Fi. " +
+                    "It appears here within a few seconds."
+            } else {
+                "Tap RECEIVE to start listening, then rescan."
+            },
+            color = theme.dim,
+            fontFamily = theme.body ?: FontFamily.Default,
+            fontSize = 11.sp,
+            lineHeight = 16.sp,
+        )
+    }
+}
+
+@Composable
+private fun Radar(theme: ShellTheme, peers: List<Peer>) {
     val transition = rememberInfiniteTransition(label = "radar")
     val spin by transition.animateFloat(
         initialValue = 0f,
@@ -237,16 +297,16 @@ private fun Radar(theme: ShellTheme, devices: List<NearbyDevice>) {
                 strokeWidth = 1.5.dp.toPx(),
             )
 
-            devices.take(3).forEachIndexed { index, device ->
+            peers.take(3).forEachIndexed { index, peer ->
                 val angle = Math.toRadians((-90 + index * 120).toDouble())
                 val ring = radius * 0.72f
                 val point = Offset(
                     origin.x + cos(angle).toFloat() * ring,
                     origin.y + sin(angle).toFloat() * ring,
                 )
-                val peer = ThemeRegistry.get(device.shell)
-                drawCircle(peer.brandBg.copy(alpha = 0.22f), 21.dp.toPx(), point)
-                drawCircle(peer.brandBg, 9.dp.toPx(), point)
+                val pack = ThemeRegistry.get(peer.shell)
+                drawCircle(pack.brandBg.copy(alpha = 0.22f), 21.dp.toPx(), point)
+                drawCircle(pack.brandBg, 9.dp.toPx(), point)
             }
         }
 
@@ -271,7 +331,7 @@ private fun Radar(theme: ShellTheme, devices: List<NearbyDevice>) {
 }
 
 @Composable
-private fun DeviceRow(theme: ShellTheme, device: NearbyDevice, onClick: () -> Unit) {
+private fun PeerRow(theme: ShellTheme, peer: Peer, onClick: () -> Unit) {
     val shape = RoundedCornerShape(theme.radius * 0.55f)
     Row(
         Modifier
@@ -281,17 +341,17 @@ private fun DeviceRow(theme: ShellTheme, device: NearbyDevice, onClick: () -> Un
             .padding(horizontal = 12.dp, vertical = 11.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        val peer = ThemeRegistry.get(device.shell)
+        val pack = ThemeRegistry.get(peer.shell)
         Box(
             Modifier
                 .size(38.dp)
                 .clip(RoundedCornerShape(12.dp))
-                .background(peer.brandBg.copy(alpha = if (theme.isDark) 0.22f else 0.12f)),
+                .background(pack.brandBg.copy(alpha = if (theme.isDark) 0.22f else 0.12f)),
             contentAlignment = Alignment.Center,
         ) {
             Text(
-                deviceInitial(device.name),
-                color = peer.brandBg,
+                deviceInitial(peer.name),
+                color = pack.brandBg,
                 fontFamily = theme.headline ?: FontFamily.Default,
                 fontWeight = FontWeight.Bold,
                 fontSize = 15.sp,
@@ -300,21 +360,24 @@ private fun DeviceRow(theme: ShellTheme, device: NearbyDevice, onClick: () -> Un
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(
-                device.name,
+                peer.name,
                 color = theme.text,
                 fontFamily = theme.body ?: FontFamily.Default,
                 fontWeight = FontWeight.Medium,
                 fontSize = 14.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
             Text(
-                "${peer.name} · ${device.distanceMeters} m",
+                "${pack.name} · ${peer.host}",
                 color = theme.dim,
                 fontFamily = FontFamily.Monospace,
                 fontSize = 10.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
-        SignalBars(device.signal, theme)
-        Spacer(Modifier.width(10.dp))
+        Spacer(Modifier.width(8.dp))
         Text(
             "DROP",
             color = theme.accent,
