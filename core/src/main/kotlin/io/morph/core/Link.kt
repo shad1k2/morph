@@ -29,8 +29,8 @@ class DropLink(
 
     /** HELLO + key agreement + CAPS. Returns the peer's capabilities. */
     fun handshake(local: Capabilities): Capabilities {
-        val pair = Crypto.generateKeyPair()
-        val raw = Crypto.rawPublicKey(pair.public)
+        val privateKey = X25519.generatePrivateKey()
+        val raw = X25519.publicKey(privateKey)
         val peerRaw: ByteArray
 
         if (role == Role.SENDER) {
@@ -45,7 +45,8 @@ class DropLink(
         val sessionId = Digest.sha256(
             if (role == Role.SENDER) raw + peerRaw else peerRaw + raw
         ).copyOf(16)
-        key = Crypto.deriveSessionKey(pair.private, Crypto.publicKeyFromRaw(peerRaw), sessionId)
+        val shared = X25519.sharedSecret(privateKey, peerRaw)
+        key = Crypto.deriveSessionKey(shared, sessionId)
 
         write(MessageType.CAPS, local.encode())
         val peer = Capabilities.decode(read(MessageType.CAPS).payload)

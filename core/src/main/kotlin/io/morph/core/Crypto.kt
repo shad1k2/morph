@@ -2,12 +2,7 @@ package io.morph.core
 
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import java.security.KeyFactory
-import java.security.KeyPair
-import java.security.KeyPairGenerator
 import java.security.MessageDigest
-import java.security.PublicKey
-import java.security.spec.X509EncodedKeySpec
 import javax.crypto.Cipher
 import javax.crypto.Mac
 import javax.crypto.SecretKey
@@ -22,30 +17,8 @@ object Digest {
 /** Key agreement / derivation / AEAD — standard primitives only (spec §10). */
 object Crypto {
 
-    private val X25519_SPKI_PREFIX =
-        byteArrayOf(0x30, 0x2a, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x6e, 0x03, 0x21, 0x00)
-
-    fun generateKeyPair(): KeyPair = KeyPairGenerator.getInstance("X25519").generateKeyPair()
-
-    /** X.509 SPKI → raw 32-byte X25519 public key (HELLO payload). */
-    fun rawPublicKey(key: PublicKey): ByteArray {
-        val encoded = key.encoded
-        require(encoded.size == 44) { "unexpected X25519 SPKI size: ${encoded.size}" }
-        return encoded.copyOfRange(12, 44)
-    }
-
-    fun publicKeyFromRaw(raw: ByteArray): PublicKey {
-        require(raw.size == 32) { "raw X25519 key must be 32 bytes" }
-        return KeyFactory.getInstance("X25519")
-            .generatePublic(X509EncodedKeySpec(X25519_SPKI_PREFIX + raw))
-    }
-
     /** HKDF-SHA256(shared, salt=session_id, info="DROP/1"). */
-    fun deriveSessionKey(privateKey: java.security.PrivateKey, peerPublic: PublicKey, sessionId: ByteArray): SecretKey {
-        val agreement = javax.crypto.KeyAgreement.getInstance("X25519")
-        agreement.init(privateKey)
-        agreement.doPhase(peerPublic, true)
-        val shared = agreement.generateSecret()
+    fun deriveSessionKey(shared: ByteArray, sessionId: ByteArray): SecretKey {
         val prk = hmacSha256(sessionId, shared)
         val okm = hmacSha256(prk, byteArrayOf(0x01) + "DROP/1".toByteArray())
         return SecretKeySpec(okm.copyOf(32), "AES")
