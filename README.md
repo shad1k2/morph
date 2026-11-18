@@ -13,7 +13,8 @@ Wi‑Fi Direct** moves the actual payload. The wire protocol is our own —
 [`ARCHITECTURE.md`](docs/ARCHITECTURE.md); shell design packs in
 [`THEMES.md`](docs/THEMES.md).
 
-> Status: early design. Architecture and protocol spec first, code next.
+> Status: `morph-core` implemented and tested; `morph-app` has a Compose preview of
+> all shell styles. Transfer transports are the next step.
 
 ## Design principle
 
