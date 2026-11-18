@@ -252,6 +252,7 @@ object MorphEngine {
                 delay(1600)
                 if (drop?.kind == DropKind.OUTGOING) publish(ctx, null)
             } catch (t: Throwable) {
+                Log.w("MORPH", "OUT transfer failed", t)
                 val message = friendly(t)
                 lastError = message
                 status = message
@@ -295,6 +296,7 @@ object MorphEngine {
 
             trace("OUT: chunks sent")
             link.sendDone(manifest.manifestHash())
+            trace("OUT: DONE sent, awaiting ACK")
             if (!link.awaitAck()) throw IOException("receiver rejected the file")
             trace("OUT: ack received")
         }
@@ -484,8 +486,9 @@ object MorphEngine {
                 link.abort()
                 throw IOException("manifest mismatch")
             }
+            trace("IN: DONE verified")
             link.ack()
-            trace("IN: acked")
+            trace("IN: ACK written")
 
             lastSaved = "${file.name} · ${formatBytes(file.size)}"
             publish(ctx, drop?.copy(phase = TransferPhase.DONE, progress = 1f, message = "Saved to Downloads/MORPH"))
@@ -493,6 +496,7 @@ object MorphEngine {
             delay(1800)
             publish(ctx, null)
         } catch (t: Throwable) {
+            Log.w("MORPH", "IN transfer failed", t)
             val message = friendly(t)
             lastError = message
             status = message
