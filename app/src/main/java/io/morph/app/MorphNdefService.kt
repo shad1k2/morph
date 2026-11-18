@@ -52,7 +52,8 @@ class MorphNdefService : HostApduService() {
     }
 
     override fun onDeactivated(reason: Int) {
-        selected = Selected.NONE
+        // Some readers toggle the field between APDU chains. Keeping the
+        // selected file is required or the following READ BINARY fails.
     }
 
     private fun select(apdu: ByteArray): ByteArray {

@@ -45,8 +45,8 @@ object NfcHandoff {
         val legacy = listOf(MARKER, name, host, port, shell).joinToString("\n")
         return NdefMessage(
             arrayOf(
-                NdefRecord.createMime(MIME, legacy.toByteArray(Charsets.UTF_8)),
                 NdefRecord.createUri(uri),
+                NdefRecord.createMime(MIME, legacy.toByteArray(Charsets.UTF_8)),
                 NdefRecord.createApplicationRecord("io.morph.app"),
             )
         )
