@@ -71,7 +71,8 @@ fun OverlayPopup(
             ) {
                 MonoLabel(
                     when {
-                        drop.kind == DropKind.READY -> "VISIBLE ON THIS WI-FI"
+                        drop.kind == DropKind.READY ->
+                            if (drop.mode == "SEND") "SEND MODE · NFC TAP" else "RECEIVE MODE"
                         incoming && phase == TransferPhase.PROMPT -> "INCOMING DROP"
                         incoming && phase == TransferPhase.RUNNING -> "RECEIVING"
                         incoming -> "TRANSFER COMPLETE"
@@ -86,7 +87,11 @@ fun OverlayPopup(
                 Text(
                     when {
                         drop.kind == DropKind.READY ->
-                            if (theme.uppercaseHeadline) "DROP READY" else "Drop ready"
+                            if (drop.mode == "SEND") {
+                                if (theme.uppercaseHeadline) "DROP READY" else "Drop ready"
+                            } else {
+                                if (theme.uppercaseHeadline) "READY TO RECEIVE" else "Ready to receive"
+                            }
                         incoming && phase == TransferPhase.PROMPT ->
                             if (theme.uppercaseHeadline) "DROP READY" else "Drop ready"
                         incoming && phase == TransferPhase.RUNNING -> "In flight"
@@ -128,7 +133,7 @@ fun OverlayPopup(
 
                 Spacer(Modifier.height(12.dp))
                 if (drop.kind == DropKind.READY) {
-                    ReadyRow(theme)
+                    ReadyRow(theme, drop.mode == "SEND")
                 } else {
                     OverlayFileRow(theme, drop)
                 }
@@ -205,7 +210,7 @@ fun OverlayPopup(
 }
 
 @Composable
-private fun ReadyRow(theme: ShellTheme) {
+private fun ReadyRow(theme: ShellTheme, sending: Boolean) {
     val shape = RoundedCornerShape(theme.radius * 0.5f)
     Row(
         Modifier
@@ -234,14 +239,14 @@ private fun ReadyRow(theme: ShellTheme) {
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
             Text(
-                "Listening for drops",
+                if (sending) "Choose a file to send" else "Waiting for an incoming file",
                 color = theme.text,
                 fontFamily = theme.body ?: FontFamily.Default,
                 fontWeight = FontWeight.Medium,
                 fontSize = 13.sp,
             )
             Text(
-                "Ask the other phone to tap this one",
+                if (sending) "Tap SEND FILE below" else "The sender picks a file in their pop-up",
                 color = theme.dim,
                 fontFamily = FontFamily.Monospace,
                 fontSize = 9.sp,

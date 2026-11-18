@@ -70,6 +70,8 @@ data class DropUi(
     val ok: Boolean = true,
     /** Optional action shown on a READY card (e.g. "SEND FILE" after NFC tap). */
     val actionLabel: String? = null,
+    /** SEND for the tapping phone, RECEIVE for the tag owner / QS tile. */
+    val mode: String? = null,
 )
 
 /**
@@ -203,6 +205,7 @@ object MorphEngine {
                 shell = peer.shell,
                 message = "Connected over NFC · ${peer.host}",
                 actionLabel = "SEND FILE",
+                mode = "SEND",
             )
         )
     }
@@ -217,10 +220,11 @@ object MorphEngine {
                 peerName = deviceName(),
                 shell = ThemePrefs.selected(ctx),
                 message = "Listening on port $localPort · same Wi-Fi as the other phone",
+                mode = "RECEIVE",
             )
         )
         scope.launch {
-            delay(10_000)
+            delay(30_000)
             if (drop?.kind == DropKind.READY) publish(ctx, null)
         }
     }
