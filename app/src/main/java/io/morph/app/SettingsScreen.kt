@@ -287,6 +287,19 @@ fun SettingsScreen(
                 lineHeight = 16.sp,
             )
 
+            Spacer(Modifier.height(12.dp))
+            Hairline(theme)
+            Spacer(Modifier.height(12.dp))
+            Text(
+                "NFC tap: unlock both phones and touch their backs. The receiving phone " +
+                    "emulates an NDEF tag with its IP and port; the sender opens the file " +
+                    "picker immediately — no need to pick a device from the list.",
+                color = theme.dim,
+                fontFamily = theme.body ?: FontFamily.Default,
+                fontSize = 11.sp,
+                lineHeight = 16.sp,
+            )
+
             Spacer(Modifier.height(14.dp))
             PrimaryAction(
                 if (overlayEnabled) "TEST POP-UP" else "ALLOW POP-UP",

@@ -5,6 +5,8 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.nfc.NdefMessage
+import android.nfc.NfcAdapter
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -59,24 +61,45 @@ class MainActivity : ComponentActivity() {
         const val EXTRA_ASK_OVERLAY = "io.morph.app.extra.ASK_OVERLAY"
     }
 
+    private var nfcPeer by mutableStateOf<Peer?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, false)
         window.statusBarColor = Color.Transparent.toArgb()
         window.navigationBarColor = Color.Transparent.toArgb()
-        setContent { MorphRoot() }
+        setContent { MorphRoot(nfcPeer) { nfcPeer = null } }
 
         if (intent?.getBooleanExtra(EXTRA_ASK_OVERLAY, false) == true) {
             openOverlaySettings(this)
         }
         startReceiving(this)
+        handleNfcIntent(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleNfcIntent(intent)
+    }
+
+    /** A tap against a MORPH tag hands us a peer instantly, without scanning. */
+    private fun handleNfcIntent(intent: Intent?) {
+        if (intent?.action != NfcAdapter.ACTION_NDEF_DISCOVERED) return
+        @Suppress("DEPRECATION")
+        val messages = intent.getParcelableArrayExtra(NfcAdapter.EXTRA_NDEF_MESSAGES)
+        nfcPeer = NfcHandoff.decode(messages?.firstOrNull() as? NdefMessage).also {
+            if (it != null) MorphEngine.note("NFC tap: ${it.name} at ${it.host}")
+        }
     }
 }
 
 private enum class Screen { HOME, SETTINGS }
 
 @Composable
-private fun MorphRoot() {
+private fun MorphRoot(
+    nfcPeer: Peer? = null,
+    onNfcConsumed: () -> Unit = {},
+) {
     val context = LocalContext.current
     val detected: ShellId = remember { ShellDetector.detect() }
     var shell by remember { mutableStateOf(ThemePrefs.selected(context)) }
@@ -154,6 +177,12 @@ private fun MorphRoot() {
     val chooseFileFor: (Peer) -> Unit = { peer ->
         pendingPeer = peer
         picker.launch(arrayOf("*/*"))
+    }
+
+    LaunchedEffect(nfcPeer) {
+        val peer = nfcPeer ?: return@LaunchedEffect
+        chooseFileFor(peer)
+        onNfcConsumed()
     }
 
     Box(Modifier.fillMaxSize().background(Brush.verticalGradient(theme.background))) {

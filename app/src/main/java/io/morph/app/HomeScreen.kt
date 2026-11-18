@@ -194,7 +194,7 @@ fun HomeScreen(
         }
         Spacer(Modifier.height(10.dp))
         MonoLabel(
-            "M-DNS DISCOVERY · TCP DATA · AES-256-GCM",
+            "NFC TAP · M-DNS DISCOVERY · TCP · AES-256-GCM",
             theme.dim,
             modifier = Modifier.fillMaxWidth(),
             size = 8,
