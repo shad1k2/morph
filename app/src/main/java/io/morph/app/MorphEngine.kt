@@ -455,6 +455,10 @@ object MorphEngine {
                 return
             }
 
+            // The sender is blocked in awaitAccept(): actually send the frame.
+            link.accept()
+            trace("IN: ACCEPT frame sent")
+
             trace("IN: accepted=$accepted")
             publish(ctx, drop?.copy(phase = TransferPhase.RUNNING, progress = 0f))
 
