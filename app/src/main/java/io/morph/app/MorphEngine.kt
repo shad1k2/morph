@@ -720,7 +720,7 @@ object MorphEngine {
                 Socket().use { socket ->
                     socket.connect(InetSocketAddress(InetAddress.getLoopbackAddress(), server.localPort), 5_000)
                     socket.soTimeout = 15_000
-                    trace("OUT: connected to $host:$port")
+                    trace("OUT: connected to 127.0.0.1:${server.localPort}")
             val link = DropLink(socket.getInputStream(), socket.getOutputStream(), Role.SENDER)
                     link.handshake(localCapabilities())
                     val entry = FileEntry(1u, payload.size.toLong(), "application/octet-stream", "selftest.bin", payloadHash)
