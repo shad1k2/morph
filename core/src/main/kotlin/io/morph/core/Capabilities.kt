@@ -18,7 +18,7 @@ data class Capabilities(
 
     fun encode(): ByteArray {
         require(blob.size <= 255) { "capabilities blob too large" }
-        val buffer = ByteBuffer.allocate(12 + blob.size).order(ByteOrder.BIG_ENDIAN)
+        val buffer = ByteBuffer.allocate(15 + blob.size).order(ByteOrder.BIG_ENDIAN)
         buffer.put(protocolVersion.toByte())
         buffer.put(shellId.code.toByte())
         buffer.putShort(flags.toShort())
@@ -31,7 +31,7 @@ data class Capabilities(
 
     companion object {
         fun decode(bytes: ByteArray): Capabilities {
-            require(bytes.size >= 12) { "CAPS payload too short" }
+            require(bytes.size >= 15) { "CAPS payload too short" }
             val buffer = ByteBuffer.wrap(bytes).order(ByteOrder.BIG_ENDIAN)
             val version = buffer.get().toInt() and 0xFF
             val shell = ShellId.from(buffer.get().toInt() and 0xFF)
@@ -39,7 +39,7 @@ data class Capabilities(
             val mtu = buffer.short.toInt() and 0xFFFF
             val maxFile = buffer.long
             val blobLen = buffer.get().toInt() and 0xFF
-            require(bytes.size == 12 + blobLen) { "CAPS size mismatch" }
+            require(bytes.size == 15 + blobLen) { "CAPS size mismatch" }
             val blob = ByteArray(blobLen).also { buffer.get(it) }
             return Capabilities(version, shell, flags, mtu, maxFile, blob)
         }
