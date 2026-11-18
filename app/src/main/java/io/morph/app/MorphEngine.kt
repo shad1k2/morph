@@ -536,14 +536,18 @@ object MorphEngine {
 
     private fun publish(ctx: Context, ui: DropUi?) {
         drop = ui
-        if (ui == null || MorphApp.isForeground) {
-            runCatching {
+        when {
+            ui == null -> runCatching {
                 ctx.startService(Intent(ctx, OverlayService::class.java).setAction(OverlayService.ACTION_HIDE))
             }
-        } else {
-            runCatching {
+
+            !MorphApp.isForeground -> runCatching {
                 ctx.startService(Intent(ctx, OverlayService::class.java).setAction(OverlayService.ACTION_SHOW))
             }
+            // When a MORPH activity is in front, the in-app card is enough.
+            // Never send HIDE here: it races with an explicit SHOW from the
+            // NFC trampoline and can close the card immediately.
+            else -> Unit
         }
     }
 

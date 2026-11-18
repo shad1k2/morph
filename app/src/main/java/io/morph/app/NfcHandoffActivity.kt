@@ -7,6 +7,8 @@ import android.nfc.NfcAdapter
 import android.nfc.Tag
 import android.nfc.tech.Ndef
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.util.Log
 import androidx.activity.ComponentActivity
@@ -43,7 +45,11 @@ class NfcHandoffActivity : ComponentActivity() {
         if (peer != null) {
             MorphEngine.showNfcReady(this, peer)
             if (Settings.canDrawOverlays(this)) {
-                startService(Intent(this, OverlayService::class.java).setAction(OverlayService.ACTION_SHOW))
+                // Let the trampoline finish before raising the overlay; avoids
+                // the HIDE/SHOW race with the engine's publish().
+                Handler(Looper.getMainLooper()).postDelayed({
+                    startService(Intent(this, OverlayService::class.java).setAction(OverlayService.ACTION_SHOW))
+                }, 250)
             } else {
                 startActivity(
                     Intent(this, MainActivity::class.java)
