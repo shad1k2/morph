@@ -57,7 +57,22 @@ Phase-specific flourishes:
   track, HyperOS uses a blurred translucent bar.
 - **Complete**: short animation then auto-dismiss.
 
-## 5. Accessibility
+## 5. Research notes (2026)
+
+- **One UI 7** (Samsung): layered pill-shaped cards, soft shadows, blurred panels,
+  brighter dimensional icons — «curves and circles» as the official design page puts it.
+- **HyperOS 2** (Xiaomi): liquid glass — transparent panels, blur and specular
+  highlights, especially in Control Center and Gallery.
+- **ColorOS 15** (OPPO): natural light and shadow mapping, subtle textures,
+  Aurora/Tidal rendering engine, cross-device visual language.
+- **OriginOS 5** (vivo): soft color gradients, frosted glass, gentle motion,
+  enhanced vivo Sans typeface, layered lock-screen widgets.
+- **HarmonyOS NEXT** (Huawei): starry-gray base instead of pure black, layered
+  translucent surfaces, unified multi-language typeface, precise fade motion.
+- **Nothing OS 5**: NDot dot-matrix accent, Geist as the new system typeface,
+  `#1B1B1D` + `#D71921` palette, intentionally restrained dot-matrix usage.
+
+## 6. Accessibility
 
 - Text contrast must stay ≥ 4.5:1 in every pack; blur never reduces legibility.
 - Reduced-motion setting disables specular sweeps and spring overshoot.
