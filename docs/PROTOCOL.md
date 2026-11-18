@@ -1,114 +1,294 @@
 # DROP/1 — MORPH transfer protocol
 
-Status: draft v0.1
+Status: **draft v0.2** · Editor: MORPH core team · Applies to: `MORPH >= 0.1`
 
-## Goals
+---
 
-- Vendor-independent: no Google Play Services requirement (fallback transport exists).
-- Session-oriented: a physical NFC tap binds the whole session to one peer.
-- Resumable: a dropped Wi-Fi link can continue from the last acknowledged chunk.
-- Shell-aware: capability exchange carries the receiver's shell identity so both
-  UIs can render in the same visual language.
+## 1. Scope
 
-## Frame format
+DROP/1 defines how two MORPH devices establish a trusted session, exchange
+capabilities, negotiate a transport and move files. It deliberately defines
+**nothing** about how the radio works: BLE, NFC and Wi-Fi are transports, not
+part of the semantics.
 
-All frames, regardless of transport:
+### 1.1 Goals
 
-```
-offset  size  field
-0       4     MAGIC = "DROP"   (0x44 0x52 0x4F 0x50)
-4       1     VERSION = 0x01
-5       1     TYPE
-6       4     SEQ      (big endian, per direction)
-10      2     LENGTH   (big endian, payload bytes)
-12      N     PAYLOAD
-12+N    4     CRC32    (IEEE 802.3, over bytes 0..11+N)
-```
+- Work without Google Play Services.
+- Bind a session to a physical action (NFC tap) to prevent device confusion and
+  MITM.
+- Resume after a transport drop.
+- Carry the receiver's shell identity so both UIs can render in one design
+  language.
+- Be extensible: version, capability bits and unknown-message tolerance.
 
-Maximum frame size on BLE is negotiated via `CAPS.max_mtu`; Wi-Fi transport may
-use larger frames (up to 64 KiB) with the same header.
+### 1.2 Non-goals
 
-## Message types
+- Internet relay / cloud storage. Peers are assumed to be nearby.
+- Custom cryptography. Standard primitives only.
+- Contact discovery / social graph.
 
-| Code | Name | Direction | Purpose |
-|---|---|---|---|
-| 0x01 | HELLO | both | ephemeral public key, session token proof |
-| 0x02 | CAPS | both | shell_id, version, MTU, transports, limits |
-| 0x03 | OFFER | sender | manifest: files, sizes, MIME, SHA-256 |
-| 0x04 | ACCEPT | receiver | accepted file ids, chosen transport |
-| 0x05 | CHUNK | sender | numbered payload block |
-| 0x06 | ACK | receiver | cumulative acknowledged sequence |
-| 0x07 | RESUME | receiver | request retransmission from SEQ |
-| 0x08 | PROGRESS | both | optional UI progress |
-| 0x09 | DONE | sender | transfer finished, manifest hash |
-| 0xFF | ABORT | both | reason code |
+---
 
-## State machine
+## 2. Terminology
 
-```
-IDLE --NFC tap--> HANDSHAKE --BLE HELLO/CAPS--> NEGOTIATED
-   NEGOTIATED --OFFER--> OFFERED --ACCEPT--> TRANSFERRING
-   TRANSFERRING --CHUNK/ACK--> TRANSFERRING
-   TRANSFERRING --link lost--> RESUMING --RESUME--> TRANSFERRING
-   TRANSFERRING --DONE--> VERIFYING --hash ok--> COMPLETE
-   any state --ABORT--> IDLE
-```
+| Term | Meaning |
+|---|---|
+| **Sender** | device that offers files |
+| **Receiver** | device that accepts files |
+| **Session** | one tap → one completed (or aborted) transfer |
+| **Session ID** | 128-bit value created by the tap initiator |
+| **Frame** | the framing envelope defined in §4 |
+| **Manifest** | list of offered files with sizes and SHA-256 hashes |
+| **Shell** | manufacturer UI identity (Pixel, HyperOS, Nothing OS, …) |
 
-## Phase 1 — NFC bootstrap
+---
 
-NDEF record payload (binary, ~40 bytes):
+## 3. Layer model
 
 ```
-u8   version
-u128 session_id
-u16  ble_service_uuid
-u8   flags (bit0: wifi_aware, bit1: wifi_direct, bit2: requires_contacts)
-[optional] u8[32] wifi_psk
+┌───────────────────────────────────────────┐
+│  App layer      manifest, UI, permissions │
+├───────────────────────────────────────────┤
+│  Session layer  HELLO/CAPS/OFFER/...      │  ← DROP/1 proper
+├───────────────────────────────────────────┤
+│  Framing        MAGIC/VER/TYPE/SEQ/LEN/…  │  ← DROP/1 proper
+├──────────────┬──────────────┬─────────────┤
+│ NFC handshake│ BLE control  │ Wi-Fi bulk  │  ← transports
+└──────────────┴──────────────┴─────────────┘
 ```
 
-NFC is foreground-only by platform design; a QR-code fallback carries the same
-payload for devices without NFC.
+---
 
-## Phase 2 — BLE control
+## 4. Frame format
 
-GATT service with three characteristics:
-
-- `ctrl_tx` — write, frames from sender to receiver
-- `ctrl_rx` — notify, frames from receiver
-- `presence` — notify, RSSI-based proximity updates
-
-`CAPS.shell_id` values: `0x01` Pixel/AOSP, `0x02` HyperOS, `0x03` Nothing OS,
-`0x04` OneUI, `0xFF` unknown. The UI consumes this to switch its design pack.
-
-## Phase 3 — bulk data
-
-Preferred: Wi‑Fi Aware (Neighbor Aware Networking) with a `NetworkSpecifier` and
-a local TCP socket. Fallback: Wi‑Fi Direct group, otherwise a plain HTTP server
-on the local network for GMS-less/legacy devices.
-
-CHUNK payload:
+Offsets in bytes, all integers **big-endian**.
 
 ```
-u32 file_id
-u64 offset
+ 0..3    MAGIC     = 0x44 0x52 0x4F 0x50 ("DROP")
+ 4       VERSION   = 0x01
+ 5       TYPE      (see §5)
+ 6..9    SEQ       uint32, monotonically increasing per sender direction
+10..11   LENGTH    uint16, payload length
+12..N    PAYLOAD   LENGTH bytes
+N+1..N+4 CRC32     IEEE 802.3, computed over bytes 0..N
+```
+
+`MAX_FRAME` is negotiated: BLE `CAPS.max_mtu` (20–517), Wi-Fi up to 65535.
+Frames larger than the negotiated MTU MUST be fragmented at the framing layer
+with consecutive SEQ values; the receiver reassembles by SEQ.
+
+### 4.1 Test vector
+
+A `DONE` frame, SEQ = 1, empty payload:
+
+```
+44 52 4F 50 01 09 00 00 00 01 00 00
+<CRC32 of the 12 bytes above>
+```
+
+---
+
+## 5. Message types
+
+| Code | Name | Direction | Payload | Meaning |
+|---|---|---|---|---|
+| `0x01` | HELLO | both | 32B X25519 pubkey + 16B session_id | key agreement |
+| `0x02` | CAPS | both | capability block (§6) | feature negotiation |
+| `0x03` | OFFER | sender | manifest (§7.1) | propose files |
+| `0x04` | ACCEPT | receiver | accepted file ids + transport | accept/reject |
+| `0x05` | CHUNK | sender | file_id + offset + bytes | payload block |
+| `0x06` | ACK | receiver | cumulative SEQ | flow control |
+| `0x07` | RESUME | receiver | first missing SEQ | gap recovery |
+| `0x08` | PROGRESS | both | transferred bytes, total | optional UI |
+| `0x09` | DONE | sender | manifest SHA-256 | end of stream |
+| `0xFF` | ABORT | both | reason code | terminate |
+
+Unknown TYPE values MUST be ignored; the session continues unless a mandatory
+capability was negotiated.
+
+---
+
+## 6. Capability block (CAPS payload)
+
+```
+u8   protocol_version      (1)
+u8   shell_id              (§6.1)
+u16  flags                 (bitfield, §6.2)
+u16  max_mtu
+u32  max_file_size
+u8[] capabilities_blob     (optional, TLV)
+```
+
+### 6.1 shell_id registry
+
+| Value | Shell |
+|---|---|
+| `0x01` | Pixel / AOSP (Material) |
+| `0x02` | Xiaomi HyperOS (Liquid Glass) |
+| `0x03` | Nothing OS (NDot/Geist) |
+| `0x04` | Samsung OneUI |
+| `0xFF` | Unknown / fallback theme |
+
+`shell_id` is **advisory**: it changes UI only, never transport behaviour.
+
+### 6.2 Flags
+
+| Bit | Meaning |
+|---|---|
+| 0 | `WIFI_AWARE` supported |
+| 1 | `WIFI_DIRECT` supported |
+| 2 | `NFC_HANDSHAKE` supported |
+| 3 | `RESUME` supported |
+| 4 | `ENCRYPTED` (set after HELLO) |
+| 5 | `CONTACTS_ONLY` requested |
+| 6 | `QR_FALLBACK` supported |
+
+---
+
+## 7. Manifest and chunks
+
+### 7.1 OFFER manifest
+
+```
+u16  file_count
+repeat file_count:
+  u32  file_id
+  u64  size
+  u8   mime_len
+  u8[] mime
+  u8   name_len
+  u8[] name (UTF-8)
+  u8[32] sha256
+```
+
+### 7.2 CHUNK payload
+
+```
+u32  file_id
+u64  offset
 u8[] data
 ```
 
-Receiver ACKs cumulative sequence numbers; a gap triggers `RESUME` with the
-first missing sequence. `DONE` carries the manifest SHA-256; receiver verifies
-each file before `COMPLETE`.
+`offset` is absolute within the file. Receivers MUST write at `offset`, making
+out-of-order and resumed chunks safe.
 
-## Security
+---
 
-- Ephemeral ECDH (X25519) in HELLO; HKDF derives the session key.
-- AES-256-GCM on every frame after HELLO; the NFC session_id acts as an additional
-  authenticated binding (physical contact = MITM resistance).
-- No custom cryptographic primitives. Frame CRC32 is for corruption detection,
-  not security.
-- Capability flags are signed as part of the GCM AAD.
+## 8. State machine
 
-## Versioning
+| State | Event | Next state | Action |
+|---|---|---|---|
+| IDLE | NFC tap / QR scan | HANDSHAKE | create session_id |
+| HANDSHAKE | HELLO + key derived | NEGOTIATED | send CAPS |
+| NEGOTIATED | OFFER | OFFERED | show shell-themed confirm UI |
+| OFFERED | ACCEPT | TRANSFERRING | open bulk transport |
+| TRANSFERRING | CHUNK/ACK | TRANSFERRING | write + ack |
+| TRANSFERRING | link lost | RESUMING | remember last ACK |
+| RESUMING | RESUME | TRANSFERRING | retransmit from SEQ |
+| TRANSFERRING | DONE | VERIFYING | compare SHA-256 |
+| VERIFYING | hashes ok | COMPLETE | play shell-themed animation |
+| any | ABORT / timeout | IDLE | discard session |
 
-MAGIC + VERSION allow coexistence of `DROP/1` and future revisions. Unknown
-message types are ignored; mandatory capability bits are negotiated so an old
-peer falls back to BLE-only text transfer instead of failing the session.
+Timeouts: 5 s for HELLO/CAPS, 15 s for ACCEPT, 30 s of no ACK during transfer.
+
+---
+
+## 9. Transports
+
+### 9.1 NFC bootstrap
+
+Foreground NDEF record, binary payload:
+
+```
+u8    version = 1
+u16   ble_service_uuid
+u128  session_id
+u8    flags (bits from §6.2 subset: NFC/WIFI_AWARE/WIFI_DIRECT/QR)
+[u8[32] wifi_psk  if flags bit 1 or 0 and psk present]
+```
+
+### 9.2 BLE control channel
+
+GATT service `F000BEEF-...` with characteristics:
+
+- `CTRL_TX` (write) — sender → receiver frames
+- `CTRL_RX` (notify) — receiver → sender frames
+- `PRESENCE` (notify) — RSSI in dBm, 1 Hz
+
+All frames after HELLO are AES-GCM encrypted. MTU is negotiated via
+`CAPS.max_mtu`.
+
+### 9.3 Wi-Fi bulk channel
+
+Preference order: Wi-Fi Aware → Wi-Fi Direct → local-network HTTP fallback.
+
+- Aware: `NetworkSpecifier`, TCP port `44771`, one framed stream per file batch.
+- Direct: group owner runs the TCP listener on the same port.
+- Fallback: plain HTTP POST of framed chunks to `http://<host>:44771/drop`,
+  protected by the session key.
+
+The receiver sends `ACK` frames on the same socket; `RESUME` may be sent on the
+BLE control channel if the socket died.
+
+---
+
+## 10. Security
+
+### 10.1 Threat model
+
+- Passive eavesdropper on BLE/Wi-Fi → prevented by AES-GCM.
+- Active MITM trying to impersonate a peer → prevented by NFC physical binding
+  and key confirmation.
+- Replay of old frames → prevented by SEQ + session_id in AAD.
+
+### 10.2 Key schedule
+
+```
+X25519 ephemeral keys exchanged in HELLO
+shared = X25519(sk_local, pk_remote)
+session_key = HKDF-SHA256(shared, salt=session_id, info="DROP/1")
+```
+
+Each frame: `AES-256-GCM(session_key, nonce = seq || direction_bit,
+aad = MAGIC||VER||TYPE||SEQ||LEN, plaintext = PAYLOAD)`.
+
+CRC32 is **not** a security mechanism.
+
+### 10.3 Privacy
+
+No persistent device ID is transmitted. `session_id` is random per tap and
+erased on COMPLETE/ABORT. Contacts-only mode is enforced at the app layer.
+
+---
+
+## 11. Versioning
+
+- MAGIC + VERSION permit side-by-side `DROP/1` and future revisions.
+- Capability bits are the negotiation mechanism; unknown TLVs are skipped.
+- Peers with no common bulk transport fall back to BLE-only transfer limited to
+  text/links/contacts (max 64 KiB).
+- `ENCRYPTED` must be set before any OFFER is accepted.
+
+---
+
+## 12. Conformance checklist
+
+- [ ] Frames carry correct MAGIC/VERSION/CRC32
+- [ ] SEQ monotonic per direction
+- [ ] CAPS exchanged before OFFER
+- [ ] shell_id used for UI only
+- [ ] CHUNK offsets absolute
+- [ ] ACK cumulative
+- [ ] RESUME from first missing SEQ
+- [ ] SHA-256 verified before COMPLETE
+- [ ] session_id erased after session
+- [ ] Unknown message types ignored gracefully
+
+---
+
+## 13. Glossary
+
+**AAD** — additional authenticated data in GCM · **BLE** — Bluetooth Low Energy ·
+**CRC** — cyclic redundancy check · **GATT** — BLE Generic Attribute Profile ·
+**HKDF** — HMAC-based key derivation function · **NDEF** — NFC Data Exchange Format ·
+**SEQ** — sequence number · **TLV** — tag-length-value.

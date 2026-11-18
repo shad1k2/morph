@@ -9,7 +9,8 @@ dot-matrix NDot/Geist language on Nothing OS, and so on.
 The transport is designed as a hybrid: an **NFC tap** creates a trusted session,
 **BLE** carries discovery / proximity / control messages, and **Wi‑Fi Aware or
 Wi‑Fi Direct** moves the actual payload. The wire protocol is our own —
-[`DROP/1`](docs/PROTOCOL.md).
+[`DROP/1`](docs/PROTOCOL.md). Architecture and language choices are in
+[`ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 > Status: early design. Architecture and protocol spec first, code next.
 
