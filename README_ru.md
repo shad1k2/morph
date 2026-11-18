@@ -24,8 +24,14 @@ HyperOS, точечный NDot + Geist на Nothing OS и так далее.
 |---|---|
 | Pixel / AOSP | Material 3 Expressive, dynamic color |
 | Xiaomi HyperOS | Liquid Glass: полупрозрачность, blur, блики |
+| Samsung One UI | Мягкие слоистые пилюли и карточки |
+| OPPO ColorOS | Естественный свет, текстуры, слоистые тени |
+| vivo OriginOS | Матовые градиенты, плавное движение, vivo Sans |
+| Huawei HarmonyOS | «Звёздный» серый, слоистые полупрозрачные поверхности |
 | Nothing OS | NDot, Geist, `#1B1B1D` + `#D71921` |
-| Samsung OneUI | Плотные карточки, крупные зоны нажатия |
+
+В `app/` есть Compose-превью: поп-ап в каждом стиле, овальный бейдж бренда в
+верхнем углу и переключатель для сравнения оболочек.
 
 ## Транспорт
 

@@ -25,8 +25,14 @@ in the receiver's visual language.
 |---|---|
 | Pixel / AOSP | Material 3 Expressive, dynamic color |
 | Xiaomi HyperOS | Liquid Glass: translucency, backdrop blur, specular highlights |
+| Samsung One UI | Soft layered pill cards, rounded containers |
+| OPPO ColorOS | Natural light, textures, layered shadows |
+| vivo OriginOS | Frosted gradients, gentle motion, vivo Sans |
+| Huawei HarmonyOS | Starry-gray, layered translucent surfaces |
 | Nothing OS | NDot dot-matrix, Geist body, `#1B1B1D` + `#D71921` |
-| Samsung OneUI | Dense cards, large touch targets |
+
+`app/` contains a Compose preview screen that renders the pop-up in every shell
+style, with an oval brand badge in the top corner and a switcher to compare them.
 
 ## Transport
 
