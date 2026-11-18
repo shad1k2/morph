@@ -5,7 +5,10 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.nfc.NdefMessage
 import android.nfc.NfcAdapter
+import android.nfc.Tag
+import android.nfc.tech.Ndef
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -97,15 +100,16 @@ class MainActivity : ComponentActivity() {
         val fromTag = runCatching { Ndef.get(tag)?.cachedNdefMessage }.getOrNull()
 
         val message = fromExtras ?: fromTag
-        val parsed = NfcHandoff.decode(intent.data) ?: NfcHandoff.decode(message)
+        val parsed = NfcHandoff.decodeUri(intent.data) ?: NfcHandoff.decodeMessage(message)
 
-        nfcDebug = buildString {
+        val debug = buildString {
             append("NFC ").append(action.removePrefix("android.nfc.action."))
             append(" · data=").append(intent.data?.toString() ?: "-")
             append(" · records=").append(message?.records?.size ?: 0)
             append(" · peer=").append(parsed?.name ?: "none")
         }
-        Log.d("MORPH", nfcDebug)
+        nfcDebug = debug
+        Log.d("MORPH", debug)
 
         if (parsed != null) {
             nfcPeer = parsed
