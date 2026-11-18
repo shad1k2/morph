@@ -20,7 +20,7 @@ class MorphNdefService : HostApduService() {
 
     override fun processCommandApdu(commandApdu: ByteArray, extras: Bundle?): ByteArray {
         if (commandApdu.size < 4) return fail()
-        val instruction = commandApdu[1] and 0xFF
+        val instruction = commandApdu[1].toInt() and 0xFF
         return when (instruction) {
             SELECT -> select(commandApdu)
             READ_BINARY -> read(commandApdu)
@@ -33,7 +33,7 @@ class MorphNdefService : HostApduService() {
     }
 
     private fun select(apdu: ByteArray): ByteArray {
-        val p1 = apdu[2] and 0xFF
+        val p1 = apdu[2].toInt() and 0xFF
         val dataSize = apdu[4].toInt() and 0xFF
         val data = if (apdu.size >= 5 + dataSize) {
             apdu.copyOfRange(5, 5 + dataSize)
@@ -68,8 +68,8 @@ class MorphNdefService : HostApduService() {
     }
 
     private fun read(apdu: ByteArray): ByteArray {
-        val p1 = apdu[2] and 0xFF
-        val p2 = apdu[3] and 0xFF
+        val p1 = apdu[2].toInt() and 0xFF
+        val p2 = apdu[3].toInt() and 0xFF
         val offset = ((p1 and 0x7F) shl 8) or p2
 
         val file = when (selected) {
@@ -80,7 +80,7 @@ class MorphNdefService : HostApduService() {
         if (offset >= file.size) return status(0x6B, 0x00)
 
         val wanted = if (apdu.size > 4) {
-            val le = apdu.last() and 0xFF
+            val le = apdu.last().toInt() and 0xFF
             if (le == 0) 256 else le
         } else {
             file.size - offset
@@ -120,6 +120,8 @@ class MorphNdefService : HostApduService() {
 
     private fun status(sw1: Int, sw2: Int): ByteArray =
         byteArrayOf(sw1.toByte(), sw2.toByte())
+
+    private var selected: Selected = Selected.NONE
 
     private enum class Selected { NONE, AID, CC, NDEF }
 
