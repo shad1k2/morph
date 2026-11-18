@@ -60,6 +60,29 @@ object NfcHandoff {
         return decode(messages?.firstOrNull() as? NdefMessage)
     }
 
+    /** Legacy path: MORPH/1 MIME record from older HCE builds. */
+    private fun decode(message: NdefMessage?): Peer? {
+        val record = message?.records?.firstOrNull { candidate ->
+            val type = candidate.type ?: return@firstOrNull false
+            String(type, Charsets.US_ASCII).equals(MIME, ignoreCase = true)
+        } ?: return null
+
+        val parts = String(record.payload, Charsets.UTF_8).split('\n')
+        if (parts.size < 5 || parts[0] != MARKER) return null
+
+        val port = parts[3].toIntOrNull() ?: return null
+        val shellCode = parts[4].toIntOrNull() ?: return null
+        if (parts[1].isBlank() || parts[2].isBlank()) return null
+
+        return Peer(
+            id = "nfc:${parts[2]}:$port",
+            name = parts[1],
+            host = parts[2],
+            port = port,
+            shell = io.morph.core.ShellId.from(shellCode),
+        )
+    }
+
     private fun decodeUri(uri: Uri?): Peer? {
         if (uri == null || uri.scheme != "morph") return null
         val host = uri.getQueryParameter("h") ?: return null
