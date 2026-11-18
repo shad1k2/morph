@@ -1,8 +1,10 @@
 package io.morph.app
 
 import android.nfc.cardemulation.HostApduService
+import android.content.Intent
 import android.os.Bundle
 import android.util.Log
+import androidx.core.content.ContextCompat
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
@@ -15,8 +17,16 @@ class MorphNdefService : HostApduService() {
 
     override fun onCreate() {
         super.onCreate()
-        // Make sure the advertised port is actually listening before we are read.
+        // Make sure the advertised port is actually listening before we are read,
+        // and keep it alive after the NFC session ends (a cached process can be
+        // killed before the sender finishes picking a file).
         MorphEngine.start(applicationContext)
+        runCatching {
+            ContextCompat.startForegroundService(
+                applicationContext,
+                Intent(applicationContext, MorphService::class.java),
+            )
+        }
         Log.d("MORPH", "NFC tag ready: ${NfcHandoff.message(applicationContext)}")
     }
 
