@@ -13,8 +13,9 @@ Wi‑Fi Direct** moves the actual payload. The wire protocol is our own —
 [`ARCHITECTURE.md`](docs/ARCHITECTURE.md); shell design packs in
 [`THEMES.md`](docs/THEMES.md).
 
-> Status: `morph-core` implemented and tested; `morph-app` has a Compose preview of
-> all shell styles. Transfer transports are the next step.
+> Status: `morph-core` implemented and tested; `morph-app` is a complete,
+> shell-aware UI (radar, file picker, drop overlay, settings). Transfer
+> transports are the next step.
 
 ## Design principle
 
@@ -32,8 +33,13 @@ in the receiver's visual language.
 | Huawei HarmonyOS | Starry-gray, layered translucent surfaces |
 | Nothing OS | NDot dot-matrix, Geist body, `#1B1B1D` + `#D71921` |
 
-`app/` contains a Compose preview screen that renders the pop-up in every shell
-style, with an oval brand badge in the top corner and a switcher to compare them.
+`app/` is the Android client. It detects the local shell and re-skins the whole
+flow: hero + radar on the home screen, nearby device list, a real SAF file
+picker, an AirDrop-style drop card with accept/decline and progress, and a
+settings screen with per-shell preview, transport toggles and protocol info.
+Every pack carries its own silhouette and brand oval, not just a different
+accent: light One UI/ColorOS, glass HyperOS/OriginOS, layered HarmonyOS, flat
+Nothing OS and Pixel.
 
 ## Transport
 

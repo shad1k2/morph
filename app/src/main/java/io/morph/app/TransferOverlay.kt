@@ -227,7 +227,7 @@ private fun FileCard(theme: ShellTheme, transfer: TransferUi) {
             color = theme.dim,
             fontFamily = FontFamily.Monospace,
             fontSize = 9.sp,
-            letterSpacing = 0.8f,
+            letterSpacing = 0.8.sp,
         )
     }
 }

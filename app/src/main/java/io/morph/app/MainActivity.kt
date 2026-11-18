@@ -16,6 +16,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
@@ -169,7 +170,7 @@ private fun MorphApp() {
 
 /** Soft coloured light under translucent packs so glass reads as glass. */
 @Composable
-private fun GlassBackdrop(theme: ShellTheme) {
+private fun BoxScope.GlassBackdrop(theme: ShellTheme) {
     if (theme.cardStyle != CardStyle.GLASS) return
 
     Box(
