@@ -71,8 +71,9 @@ docs/               PROTOCOL.md, ARCHITECTURE.md, THEMES.md
 ## 5. Roadmap
 
 1. ✅ `morph-core`: `FrameCodec`, `Capabilities`, session FSM + tests (Kotlin).
-2. ✅ `morph-app`: `ShellDetector`, seven theme packs, pop-up preview with brand badge.
+2. ✅ `morph-app`: home radar, SAF file picker, drop overlay, settings,
+   seven theme packs, Quick Settings tile and system overlay (v0.2).
 3. BLE control channel + text/link transfer (MVP).
 4. NFC bootstrap + Wi-Fi bulk transfer + resume.
-5. `morph-xposed`: sharesheet device list, floating bubble, QS tile.
+5. `morph-xposed`: sharesheet device list and floating bubble.
 6. `morph-relay`: optional internet rendezvous (Go).

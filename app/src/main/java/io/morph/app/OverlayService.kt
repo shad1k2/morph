@@ -77,14 +77,24 @@ class OverlayService : Service() {
                 var progress by remember { mutableStateOf(0f) }
 
                 LaunchedEffect(phase) {
-                    if (phase == TransferPhase.RUNNING) {
-                        repeat(100) { step ->
-                            delay(20)
-                            progress = (step + 1) / 100f
+                    when (phase) {
+                        TransferPhase.PROMPT -> {
+                            // AirDrop-like: the card does not stay forever.
+                            delay(15_000)
+                            dismiss()
                         }
-                        phase = TransferPhase.DONE
-                        delay(1500)
-                        dismiss()
+
+                        TransferPhase.RUNNING -> {
+                            repeat(100) { step ->
+                                delay(20)
+                                progress = (step + 1) / 100f
+                            }
+                            phase = TransferPhase.DONE
+                            delay(1500)
+                            dismiss()
+                        }
+
+                        TransferPhase.DONE -> Unit
                     }
                 }
 
