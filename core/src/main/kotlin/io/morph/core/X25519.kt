@@ -92,6 +92,6 @@ object X25519 {
             val tmp = x2; x2 = x3; x3 = tmp
             val tmpZ = z2; z2 = z3; z3 = tmpZ
         }
-        return (x2 * z2.modPow(FIELD.subtract(BigInteger.TWO), FIELD)).mod(FIELD)
+        return (x2 * z2.modPow(FIELD.subtract(BigInteger.valueOf(2)), FIELD)).mod(FIELD)
     }
 }
