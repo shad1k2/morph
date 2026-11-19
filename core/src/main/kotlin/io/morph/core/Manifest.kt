@@ -16,7 +16,9 @@ data class FileEntry(
 data class Manifest(val files: List<FileEntry>) {
     fun encode(): ByteArray {
         require(files.size <= 65535) { "too many files" }
-        val size = files.sumOf { 2 + 4 + 8 + 1 + it.mime.toByteArray().size + 1 + it.name.toByteArray().size + 32 } + 2
+        val size = 2 + files.sumOf {
+            4 + 8 + 1 + it.mime.toByteArray().size + 1 + it.name.toByteArray().size + 32
+        }
         val buffer = ByteBuffer.allocate(size).order(ByteOrder.BIG_ENDIAN)
         buffer.putShort(files.size.toShort())
         for (file in files) {
@@ -41,16 +43,29 @@ data class Manifest(val files: List<FileEntry>) {
     companion object {
         fun decode(bytes: ByteArray): Manifest {
             val buffer = ByteBuffer.wrap(bytes).order(ByteOrder.BIG_ENDIAN)
+            require(buffer.remaining() >= 2) { "manifest too short" }
             val count = buffer.short.toInt() and 0xFFFF
             val files = ArrayList<FileEntry>(count)
             repeat(count) {
+                require(buffer.remaining() >= 12) { "truncated file header at #$it" }
                 val id = buffer.int.toUInt()
                 val size = buffer.long
-                val mime = ByteArray(buffer.get().toInt() and 0xFF).also { buffer.get(it) }
-                val name = ByteArray(buffer.get().toInt() and 0xFF).also { buffer.get(it) }
+                require(size >= 0) { "negative size for file #$it" }
+
+                require(buffer.hasRemaining()) { "truncated mime length at #$it" }
+                val mimeLen = buffer.get().toInt() and 0xFF
+                require(buffer.remaining() >= mimeLen) { "truncated mime at #$it" }
+                val mime = ByteArray(mimeLen).also { buffer.get(it) }
+
+                require(buffer.hasRemaining()) { "truncated name length at #$it" }
+                val nameLen = buffer.get().toInt() and 0xFF
+                require(buffer.remaining() >= nameLen + 32) { "truncated name/hash at #$it" }
+                val name = ByteArray(nameLen).also { buffer.get(it) }
                 val hash = ByteArray(32).also { buffer.get(it) }
                 files += FileEntry(id, size, String(mime), String(name, Charsets.UTF_8), hash)
             }
+            // Older builds appended two zero bytes per file. Tolerate trailing
+            // data for wire compatibility; LENGTH already delimits the frame.
             return Manifest(files)
         }
     }

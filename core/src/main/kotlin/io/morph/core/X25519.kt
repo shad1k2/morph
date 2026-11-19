@@ -32,7 +32,11 @@ object X25519 {
         require(privateKey.size == 32) { "private key must be 32 bytes" }
         require(peerPublic.size == 32) { "peer public key must be 32 bytes" }
         val u = decode(peerPublic)
-        return encode(scalarMultiply(privateKey, u))
+        val shared = encode(scalarMultiply(privateKey, u))
+        // RFC 7748 §6.1: reject low-order public keys, they yield an all-zero
+        // secret and would produce a key both sides could predict.
+        require(shared.any { it.toInt() != 0 }) { "invalid peer public key" }
+        return shared
     }
 
     private fun clamp(key: ByteArray) {
@@ -89,8 +93,8 @@ object X25519 {
         }
 
         if (swap == 1) {
-            val tmp = x2; x2 = x3; x3 = tmp
-            val tmpZ = z2; z2 = z3; z3 = tmpZ
+            x2 = x3
+            z2 = z3
         }
         return (x2 * z2.modPow(FIELD.subtract(BigInteger.valueOf(2)), FIELD)).mod(FIELD)
     }

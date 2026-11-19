@@ -17,10 +17,15 @@ object Digest {
 /** Key agreement / derivation / AEAD — standard primitives only (spec §10). */
 object Crypto {
 
-    /** HKDF-SHA256(shared, salt=session_id, info="DROP/1"). */
+    /**
+     * HKDF-SHA256(shared, salt=session_id, info="DROP/1"), first 32 bytes.
+     *
+     * RFC 5869 expand: T(1) = HMAC(PRK, info || 0x01). The counter byte goes
+     * after the info string, not before it.
+     */
     fun deriveSessionKey(shared: ByteArray, sessionId: ByteArray): SecretKey {
         val prk = hmacSha256(sessionId, shared)
-        val okm = hmacSha256(prk, byteArrayOf(0x01) + "DROP/1".toByteArray())
+        val okm = hmacSha256(prk, "DROP/1".toByteArray() + byteArrayOf(0x01))
         return SecretKeySpec(okm.copyOf(32), "AES")
     }
 
@@ -32,6 +37,11 @@ object Crypto {
 
     /** Encrypt a frame, returning a fully encoded encrypted frame. */
     fun seal(frame: Frame, key: SecretKey, direction: Int): ByteArray {
+        // The 16-byte GCM tag travels inside the payload, so the plaintext has
+        // to leave room for it within the uint16 LENGTH field.
+        require(frame.payload.size + 16 <= Protocol.MAX_PAYLOAD) {
+            "payload too large for AEAD frame: ${frame.payload.size}"
+        }
         val nonce = nonce(frame.seq, direction)
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, key, GCMParameterSpec(128, nonce))

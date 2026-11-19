@@ -76,7 +76,8 @@ class DropLink(
         chunkSize: Int = DEFAULT_CHUNK,
         onProgress: (Long) -> Unit = {},
     ) {
-        require(chunkSize in 1..(Protocol.MAX_PAYLOAD - 12)) { "bad chunk size" }
+        // 12 bytes of CHUNK header + 16 bytes of GCM tag must fit in LENGTH.
+        require(chunkSize in 1..(Protocol.MAX_PAYLOAD - 12 - 16)) { "bad chunk size" }
         val buffer = ByteArray(chunkSize)
         var offset = 0L
         while (offset < file.size) {
@@ -102,6 +103,7 @@ class DropLink(
             val chunk = Chunk.decode(frame.payload)
             require(chunk.fileId == file.id) { "unexpected file id" }
             require(chunk.offset == written) { "unexpected offset ${chunk.offset}, want $written" }
+            require(chunk.data.isNotEmpty()) { "empty chunk at $written" }
             require(written + chunk.data.size <= file.size) { "chunk overflows file" }
             sink.write(chunk.data)
             digest.update(chunk.data)
