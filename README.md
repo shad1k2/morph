@@ -13,10 +13,31 @@ Wi‑Fi Direct** moves the actual payload. The wire protocol is our own —
 [`ARCHITECTURE.md`](docs/ARCHITECTURE.md); shell design packs in
 [`THEMES.md`](docs/THEMES.md).
 
-> Status: `morph-core` implemented and tested; `morph-app` v0.3 actually moves
-> files between two Android phones on the same Wi-Fi (mDNS + TCP + X25519 +
-> AES-256-GCM), saves them to `Downloads/MORPH`, and shows the drop card in a
-> system overlay from the Quick Settings tile.
+> Status: **v1.0.0** — `morph-core` is implemented and covered by regression
+> tests; `morph-app` moves files between two Android phones on the same Wi-Fi
+> (mDNS + TCP + X25519 + AES-256-GCM), saves them to `Downloads/MORPH`, and
+> shows the drop card in a system overlay from the Quick Settings tile.
+
+## Install
+
+Grab the signed APK from
+[Releases](https://github.com/shad1k2/morph/releases/latest). Requires Android
+10 (API 29) or newer; NFC tap-to-send needs NFC hardware.
+
+## Build
+
+```bash
+# JDK 17 and Android SDK 35 are required.
+./gradlew :core:check          # unit tests
+./gradlew :app:assembleDebug   # debug APK
+./gradlew :app:assembleRelease # signed release (see below)
+```
+
+Release builds are signed from `keystore.properties` or the equivalent
+environment variables (`MORPH_KEYSTORE`, `MORPH_KEYSTORE_PASSWORD`,
+`MORPH_KEY_ALIAS`, `MORPH_KEY_PASSWORD`). The file is git-ignored. CI runs on
+every push/PR, and pushing a `v*` tag publishes a signed APK with a SHA-256
+checksum through GitHub Actions.
 
 ## Design principle
 
@@ -54,7 +75,7 @@ full-screen activity, so the app underneath keeps running.
 
 ## Transport
 
-v0.3 ships a working path. Tap two phones to hand off the address without
+v1.0.0 ships a working path. Tap two phones to hand off the address without
 picking a device: MORPH emulates a Type-4 NDEF tag over HCE
 (AID `D2760000850101`) containing `MORPH/1`, model, IP, TCP port and shell_id.
 The other phone reads it, opens the file picker and connects directly. Both
@@ -76,7 +97,7 @@ Received files land in `Downloads/MORPH` through MediaStore, so they survive
 reboots and show up in Files. The card shows real bytes/percent, not a timer.
 
 BLE control and Wi-Fi Direct/Aware bulk transfer from [`PROTOCOL.md`](docs/PROTOCOL.md)
-are still the target for v0.4.
+remain planned for a future release; the current transport is mDNS + direct TCP.
 
 ### Self-test
 

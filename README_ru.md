@@ -12,10 +12,31 @@ HyperOS, точечный NDot + Geist на Nothing OS и так далее.
 Архитектура и выбор языков — в [`ARCHITECTURE.md`](docs/ARCHITECTURE.md),
 дизайн-пакеты оболочек — в [`THEMES.md`](docs/THEMES.md).
 
-> Статус: `morph-core` реализован и покрыт тестами; `morph-app` v0.3 реально
-> передаёт файлы между двумя Android-телефонами в одной Wi-Fi сети (mDNS + TCP +
-> X25519 + AES-256-GCM), сохраняет их в `Downloads/MORPH` и показывает карточку
-> в системном оверлее по тапу тайла в шторке.
+> Статус: **v1.0.0** — `morph-core` реализован и покрыт регрессионными тестами;
+> `morph-app` передаёт файлы между двумя Android-телефонами в одной Wi-Fi сети
+> (mDNS + TCP + X25519 + AES-256-GCM), сохраняет их в `Downloads/MORPH` и
+> показывает карточку в системном оверлее по тапу тайла в шторке.
+
+## Установка
+
+Скачайте подписанный APK из
+[Releases](https://github.com/shad1k2/morph/releases/latest). Нужен Android 10
+(API 29) или новее; для передачи касанием NFC требуется NFC-модуль.
+
+## Сборка
+
+```bash
+# Нужны JDK 17 и Android SDK 35.
+./gradlew :core:check          # юнит-тесты
+./gradlew :app:assembleDebug   # debug APK
+./gradlew :app:assembleRelease # подписанный release (см. ниже)
+```
+
+Release подписывается из `keystore.properties` или переменных окружения
+(`MORPH_KEYSTORE`, `MORPH_KEYSTORE_PASSWORD`, `MORPH_KEY_ALIAS`,
+`MORPH_KEY_PASSWORD`). Файл добавлен в `.gitignore`. CI запускается на каждый
+push/PR, а пуш тега `v*` публикует подписанный APK с SHA-256 через GitHub
+Actions.
 
 ## Принцип дизайна
 
@@ -52,7 +73,7 @@ HyperOS, точечный NDot + Geist на Nothing OS и так далее.
 
 ## Транспорт
 
-В v0.3 работает путь. чтобы не выбирать устройство из списка, достаточно
+В v1.0.0 работает путь: чтобы не выбирать устройство из списка, достаточно
 приложить телефоны: MORPH эмулирует NDEF-тег Type 4 через HCE
 (AID `D2760000850101`) с записью `MORPH/1`, моделью, IP, TCP-портом и shell_id.
 Второй телефон читает тег, сразу открывает выбор файла и подключается напрямую.
@@ -75,7 +96,7 @@ DONE / ACK         -> хеш манифеста проверен, файл фи�
 не таймер.
 
 BLE-канал управления и Wi-Fi Direct/Aware из [`PROTOCOL.md`](docs/PROTOCOL.md)
-остаются целью v0.4.
+запланированы на будущие релизы; сейчас транспорт — mDNS + прямой TCP.
 
 ### Самотест
 
