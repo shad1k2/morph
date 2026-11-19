@@ -181,7 +181,11 @@ out-of-order and resumed chunks safe.
 
 | State | Event | Next state | Action |
 |---|---|---|---|
-| IDLE | NFC tap / QR scan | HANDSHAKE | create session_id |
+| IDLE | NFC tap / QR scan | ROLE_CHOICE | create session_id, start BLE + Wi-Fi Direct |
+| ROLE_CHOICE | TCP control channel up | ROLE_CHOICE | exchange `MORPH/1 HELLO` |
+| ROLE_CHOICE | SEND FILES claim | SENDING / RECEIVING | send `SEND` on control channel |
+| SENDING | file picked | HANDSHAKE | start DROP/1 as SENDER |
+| RECEIVING | `SEND` observed | HANDSHAKE | start DROP/1 as RECEIVER |
 | HANDSHAKE | HELLO + key derived | NEGOTIATED | send CAPS |
 | NEGOTIATED | OFFER | OFFERED | show shell-themed confirm UI |
 | OFFERED | ACCEPT | TRANSFERRING | open bulk transport |
@@ -190,9 +194,26 @@ out-of-order and resumed chunks safe.
 | RESUMING | RESUME | TRANSFERRING | retransmit from SEQ |
 | TRANSFERRING | DONE | VERIFYING | compare SHA-256 |
 | VERIFYING | hashes ok | COMPLETE | play shell-themed animation |
-| any | ABORT / timeout | IDLE | discard session |
+| any | ABORT / timeout / CLOSE | IDLE | stop BLE + P2P, discard session |
 
 Timeouts: 5 s for HELLO/CAPS, 15 s for ACCEPT, 30 s of no ACK during transfer.
+The Receive card closes itself after 45 s if no control channel came up, and
+the role-choice channel gives up after 90 s without a claim (180 s overall,
+which leaves room for the sender to browse the file picker).
+
+### 8.1 Role arbitration
+
+Both phones show the same Receive card. The first phone to press **SEND FILES**
+writes `SEND <device_id>` on the control channel and becomes the sender. The
+other phone sees the line, drops its SEND button and waits for `FILE`. If both
+press within the 450 ms grace window, the NFC reader wins deterministically;
+both sides compute the same result from their host/guest roles, so no extra
+round-trip is needed. A late duplicate claim is resolved the same way: the tag
+owner yields the sender role unless it already sent `FILE`.
+
+The sender opens the file picker only after the role is resolved. If the picker
+is dismissed, `CANCEL` ends the session on both sides; the receiver never starts
+DROP/1 before it sees `FILE`.
 
 ---
 
@@ -200,38 +221,73 @@ Timeouts: 5 s for HELLO/CAPS, 15 s for ACCEPT, 30 s of no ACK during transfer.
 
 ### 9.1 NFC bootstrap
 
-Foreground NDEF record, binary payload:
+The tag owner emulates a Type-4 tag over HCE (AID `D2760000850101`). The NDEF
+message contains a `morph://drop?...` URI and, for older readers, a legacy
+`MORPH/1` MIME record:
 
 ```
-u8    version = 1
-u16   ble_service_uuid
-u128  session_id
-u8    flags (bits from §6.2 subset: NFC/WIFI_AWARE/WIFI_DIRECT/QR)
-[u8[32] wifi_psk  if flags bit 1 or 0 and psk present]
+morph://drop?n=<model>&h=<ip>&p=<port>&s=<shell_id>&i=<session_id>&r=h
+MORPH/1 \n <model> \n <ip> \n <port> \n <shell_id> \n <session_id> \n h
 ```
+
+`session_id` is 16 hex characters, generated with `SecureRandom` and rotated
+after the NFC field is gone and no session is active. It binds the BLE service
+and the Wi-Fi Direct DNS-SD instance to this physical tap. Tags from pre-1.1
+builds have no session id and still use the direct-send flow.
 
 ### 9.2 BLE control channel
 
-GATT service `F000BEEF-...` with characteristics:
+The tag owner is the GATT server and advertiser; the reader is the GATT client.
+The service UUID is derived from the session id:
 
-- `CTRL_TX` (write) — sender → receiver frames
-- `CTRL_RX` (notify) — receiver → sender frames
-- `PRESENCE` (notify) — RSSI in dBm, 1 Hz
+```
+service_uuid = UUID.nameUUIDFromBytes("morph-ble:" + session_id)
+```
 
-All frames after HELLO are AES-GCM encrypted. MTU is negotiated via
-`CAPS.max_mtu`.
+One characteristic `CTRL` accepts writes and sends notifications. Both sides
+exchange newline-delimited ASCII control lines:
+
+```
+HELLO <session_id> <device_id> <role> <name>
+SEND <device_id>
+ROLE R <device_id>
+FILE
+CANCEL | BYE
+```
+
+`role` is `S` (sender or sender claim), `R` (receiver) or `-` (undecided).
+After the role is settled, the sender keeps using the line protocol until the
+user actually picked a file, then sends `FILE`. Only after `FILE` does either
+side switch to DROP/1 on the same socket, so a dismissed file picker can still
+send `CANCEL` instead of leaving the receiver waiting on a half-open transfer.
+`HELLO` at connect time and `SEND`/`ROLE R` afterwards may repeat; receivers
+treat them as idempotent.
+
+The BLE channel is the proximity/control path; the actual payload always uses
+Wi-Fi Direct / TCP, so a BLE MTU limit never affects transfer speed.
 
 ### 9.3 Wi-Fi bulk channel
 
-Preference order: Wi-Fi Aware → Wi-Fi Direct → local-network HTTP fallback.
+Both phones advertise a DNS-SD service instance containing the session id:
 
-- Aware: `NetworkSpecifier`, TCP port `44771`, one framed stream per file batch.
-- Direct: group owner runs the TCP listener on the same port.
-- Fallback: plain HTTP POST of framed chunks to `http://<host>:44771/drop`,
-  protected by the session key.
+```
+instance = MORPH-<session_id[0..12]>-H   (tag owner)
+instance = MORPH-<session_id[0..12]>-G   (reader)
+type     = _morph._tcp
+TXT      = sid, role, name, shell, port
+```
 
-The receiver sends `ACK` frames on the same socket; `RESUME` may be sent on the
-BLE control channel if the socket died.
+The tag owner asks for group-owner intent when connecting; the reader becomes
+the P2P client and dials `groupOwnerAddress:<port>` from the TXT record. Either
+side may be the DROP/1 sender: roles are decided by the `MORPH/1` line protocol,
+not by who opened the socket. If Wi-Fi Direct is unavailable, the reader dials
+the IP/port from the NFC tag directly on the local network.
+
+The TCP stream starts with one `MORPH/1 HELLO` line per side, followed by
+`SEND` / `ROLE R` / `FILE` / `CANCEL` lines until the sender has a file ready.
+The same socket is then reused for DROP/1, so there is no second connection and
+no lost frames. Legacy senders that start with the binary `DROP` magic bypass
+the line protocol and go straight to DROP/1.
 
 ---
 

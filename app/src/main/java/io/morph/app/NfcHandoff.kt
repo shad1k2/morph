@@ -9,11 +9,20 @@ import android.nfc.NfcAdapter
 import android.os.Build
 import java.net.NetworkInterface
 import java.net.URLDecoder
+import java.security.SecureRandom
 import java.util.Locale
 
+/** A decoded NFC handoff. [sessionId] is null for tags written by pre-1.1 builds. */
+data class NfcTap(
+    val peer: Peer,
+    val sessionId: String?,
+)
+
 /**
- * NFC bootstrap for DROP/1. The receiver emulates a Type-4 NDEF tag via HCE
- * ([MorphNdefService]); the sender reads it and gets a ready-to-use [Peer].
+ * NFC bootstrap for DROP/1. One phone emulates a Type-4 NDEF tag via HCE
+ * ([MorphNdefService]); the other reads it and gets the host address, shell and
+ * a per-tap session id. The session id is what binds the Bluetooth control
+ * channel and the Wi-Fi Direct group to this physical tap.
  *
  * The tag carries a morph:// URI record (plus an AAR). Older builds used a
  * MORPH/1 MIME record, which is still understood on the read side.
@@ -23,11 +32,31 @@ object NfcHandoff {
     const val MIME = "application/vnd.morph.drop"
     private const val MARKER = "MORPH/1"
 
+    private val random = SecureRandom()
+    private val lock = Any()
+    private var hostSession: String = newSessionId()
+
+    /** Stable session id written into the emulated tag during this tap. */
+    fun hostSessionId(): String = synchronized(lock) { hostSession }
+
+    /** Start a fresh session after the previous NFC field has gone away. */
+    fun rotateHostSession(): String = synchronized(lock) {
+        hostSession = newSessionId()
+        hostSession
+    }
+
+    private fun newSessionId(): String {
+        val bytes = ByteArray(8)
+        random.nextBytes(bytes)
+        return bytes.joinToString("") { "%02X".format(it) }
+    }
+
     fun message(context: Context): NdefMessage {
         val name = Build.MODEL ?: "Android"
         val host = localAddress(context)
         val port = MorphEngine.port.toString()
         val shell = ShellDetector.detect().code.toString()
+        val session = hostSessionId()
 
         val uri = Uri.Builder()
             .scheme("morph")
@@ -36,13 +65,15 @@ object NfcHandoff {
             .appendQueryParameter("h", host)
             .appendQueryParameter("p", port)
             .appendQueryParameter("s", shell)
+            .appendQueryParameter("i", session)
+            .appendQueryParameter("r", "h")
             .build()
             .toString()
 
-        // Keep the legacy MIME record so older MORPH builds can still read the
-        // tag; the morph:// URI works on stacks that ignore custom MIME types;
-        // AAR forces Android to start MORPH even when no filter matches.
-        val legacy = listOf(MARKER, name, host, port, shell).joinToString("\n")
+        // Keep the legacy MIME record so pre-1.1 builds can still read the tag.
+        // Extra trailing fields are ignored by the old parser.
+        val legacy = listOf(MARKER, name, host, port, shell, session, "h")
+            .joinToString("\n")
         return NdefMessage(
             arrayOf(
                 NdefRecord.createUri(uri),
@@ -53,7 +84,7 @@ object NfcHandoff {
     }
 
     /** Reads either the legacy MIME record or the morph:// URI record. */
-    fun decode(intent: Intent): Peer? {
+    fun decode(intent: Intent): NfcTap? {
         val fromUri = decodeUri(intent.data)
         if (fromUri != null) return fromUri
 
@@ -64,7 +95,7 @@ object NfcHandoff {
     }
 
     /** Legacy path: MORPH/1 MIME record from older HCE builds. */
-    fun decodeMessage(message: NdefMessage?): Peer? {
+    fun decodeMessage(message: NdefMessage?): NfcTap? {
         val record = message?.records?.firstOrNull { candidate ->
             val type = candidate.type ?: return@firstOrNull false
             String(type, Charsets.US_ASCII).equals(MIME, ignoreCase = true)
@@ -77,30 +108,41 @@ object NfcHandoff {
         val shellCode = parts[4].toIntOrNull() ?: return null
         if (parts[1].isBlank() || parts[2].isBlank()) return null
 
-        return Peer(
-            id = "nfc:${parts[2]}:$port",
-            name = parts[1],
-            host = parts[2],
-            port = port,
-            shell = io.morph.core.ShellId.from(shellCode),
+        val session = parts.getOrNull(5)?.trim()?.takeIf { it.isSessionId() }
+        return NfcTap(
+            peer = Peer(
+                id = "nfc:${parts[2]}:$port",
+                name = parts[1],
+                host = parts[2],
+                port = port,
+                shell = io.morph.core.ShellId.from(shellCode),
+            ),
+            sessionId = session,
         )
     }
 
-    fun decodeUri(uri: Uri?): Peer? {
+    fun decodeUri(uri: Uri?): NfcTap? {
         if (uri == null || uri.scheme != "morph" || uri.authority != "drop") return null
         val host = uri.getQueryParameter("h")?.trim()?.takeIf { it.isNotEmpty() } ?: return null
         val port = uri.getQueryParameter("p")?.toIntOrNull()?.takeIf { it in 1..65535 } ?: return null
         val name = uri.getQueryParameter("n")?.let { decode(it) } ?: "Nearby device"
         val shell = uri.getQueryParameter("s")?.toIntOrNull()
             ?: io.morph.core.ShellId.UNKNOWN.code
-        return Peer(
-            id = "nfc:$host:$port",
-            name = name,
-            host = host,
-            port = port,
-            shell = io.morph.core.ShellId.from(shell),
+        val session = uri.getQueryParameter("i")?.trim()?.takeIf { it.isSessionId() }
+        return NfcTap(
+            peer = Peer(
+                id = "nfc:$host:$port",
+                name = name,
+                host = host,
+                port = port,
+                shell = io.morph.core.ShellId.from(shell),
+            ),
+            sessionId = session,
         )
     }
+
+    private fun String.isSessionId(): Boolean =
+        length in 8..64 && all { it.isDigit() || it.lowercaseChar() in 'a'..'f' }
 
     private fun decode(value: String): String =
         runCatching { URLDecoder.decode(value, "UTF-8") }.getOrDefault(value)

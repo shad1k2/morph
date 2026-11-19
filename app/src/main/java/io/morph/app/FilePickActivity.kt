@@ -13,9 +13,14 @@ import androidx.activity.result.contract.ActivityResultContracts
 class FilePickActivity : ComponentActivity() {
 
     private val picker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
-        val peer = MorphEngine.nfcPeer
-        if (uri != null && peer != null) {
-            MorphEngine.send(this, peer, uri)
+        if (uri == null) {
+            // A sender claim without a file would leave the other phone
+            // waiting, so release the whole session.
+            MorphEngine.cancelSend()
+        } else if (MorphEngine.hasActiveNfcSession()) {
+            MorphEngine.sendSession(this, uri)
+        } else {
+            MorphEngine.nfcPeer?.let { peer -> MorphEngine.send(this, peer, uri) }
         }
         finish()
     }

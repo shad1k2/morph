@@ -7,8 +7,6 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.nfc.NdefMessage
 import android.nfc.NfcAdapter
-import android.nfc.Tag
-import android.nfc.tech.Ndef
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -63,13 +61,12 @@ class MainActivity : ComponentActivity() {
         const val EXTRA_ASK_OVERLAY = "io.morph.app.extra.ASK_OVERLAY"
     }
 
-    private var nfcPeer by mutableStateOf<Peer?>(null)
     private var nfcDebug by mutableStateOf<String?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, false)
-        setContent { MorphRoot(nfcPeer, nfcDebug) { nfcPeer = null } }
+        setContent { MorphRoot(nfcDebug) }
 
         if (intent?.getBooleanExtra(EXTRA_ASK_OVERLAY, false) == true) {
             openOverlaySettings(this)
@@ -84,7 +81,7 @@ class MainActivity : ComponentActivity() {
         handleNfcIntent(intent)
     }
 
-    /** A tap against a MORPH tag hands us a peer instantly, without scanning. */
+    /** A tap against a MORPH tag starts the BLE + Wi-Fi Direct session. */
     private fun handleNfcIntent(intent: Intent?) {
         if (intent == null) return
         val action = intent.action ?: ""
@@ -93,25 +90,19 @@ class MainActivity : ComponentActivity() {
         val messages = intent.getParcelableArrayExtra(NfcAdapter.EXTRA_NDEF_MESSAGES)
         val fromExtras = messages?.firstOrNull() as? NdefMessage
 
-        @Suppress("DEPRECATION")
-        val tag = intent.getParcelableExtra<Tag>(NfcAdapter.EXTRA_TAG)
-        val fromTag = runCatching { Ndef.get(tag)?.cachedNdefMessage }.getOrNull()
-
-        val message = fromExtras ?: fromTag
-        val parsed = NfcHandoff.decodeUri(intent.data) ?: NfcHandoff.decodeMessage(message)
-
+        val tap = NfcHandoff.decode(intent)
         val debug = buildString {
             append("NFC ").append(action.removePrefix("android.nfc.action."))
             append(" · data=").append(intent.data?.toString() ?: "-")
-            append(" · records=").append(message?.records?.size ?: 0)
-            append(" · peer=").append(parsed?.name ?: "none")
+            append(" · records=").append(fromExtras?.records?.size ?: 0)
+            append(" · peer=").append(tap?.peer?.name ?: "none")
+            append(" · session=").append(tap?.sessionId ?: "-")
         }
         nfcDebug = debug
         Log.d("MORPH", debug)
 
-        if (parsed != null) {
-            nfcPeer = parsed
-            MorphEngine.note("NFC tap: ${parsed.name} at ${parsed.host}")
+        if (tap != null) {
+            MorphEngine.onGuestTap(this, tap)
         }
     }
 }
@@ -120,9 +111,7 @@ private enum class Screen { HOME, SETTINGS }
 
 @Composable
 private fun MorphRoot(
-    nfcPeer: Peer? = null,
     nfcDebug: String? = null,
-    onNfcConsumed: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val detected: ShellId = remember { ShellDetector.detect() }
@@ -170,6 +159,16 @@ private fun MorphRoot(
         }
     }
 
+    // Bluetooth control channel + Wi-Fi Direct bulk path. If these are denied
+    // the session falls back to plain TCP on the local network.
+    val nearby = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { }
+    LaunchedEffect(Unit) {
+        val missing = NearbyPermissions.missing(context)
+        if (missing.isNotEmpty()) nearby.launch(missing.toTypedArray())
+    }
+
     val requestOverlay: () -> Unit = { openOverlaySettings(context) }
     val testOverlay: () -> Unit = {
         if (Settings.canDrawOverlays(context)) {
@@ -202,12 +201,6 @@ private fun MorphRoot(
     val chooseFileFor: (Peer) -> Unit = { peer ->
         pendingPeer = peer
         picker.launch(arrayOf("*/*"))
-    }
-
-    LaunchedEffect(nfcPeer) {
-        val peer = nfcPeer ?: return@LaunchedEffect
-        chooseFileFor(peer)
-        onNfcConsumed()
     }
 
     Box(Modifier.fillMaxSize().background(Brush.verticalGradient(theme.background))) {
@@ -302,10 +295,8 @@ private fun MorphRoot(
                     onDecline = { MorphEngine.declineIncoming() },
                     onDone = { MorphEngine.dismiss() },
                     onAction = {
-                        if (current.actionLabel != null) {
-                            runCatching {
-                                context.startActivity(Intent(context, FilePickActivity::class.java))
-                            }
+                        if (current.kind == DropKind.READY && current.actionLabel != null) {
+                            MorphEngine.beginSend(context)
                         } else {
                             MorphEngine.dismiss()
                         }

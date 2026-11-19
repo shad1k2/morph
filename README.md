@@ -13,10 +13,11 @@ Wi‑Fi Direct** moves the actual payload. The wire protocol is our own —
 [`ARCHITECTURE.md`](docs/ARCHITECTURE.md); shell design packs in
 [`THEMES.md`](docs/THEMES.md).
 
-> Status: **v1.0.0** — `morph-core` is implemented and covered by regression
-> tests; `morph-app` moves files between two Android phones on the same Wi-Fi
-> (mDNS + TCP + X25519 + AES-256-GCM), saves them to `Downloads/MORPH`, and
-> shows the drop card in a system overlay from the Quick Settings tile.
+> Status: **v1.1.0** — `morph-core` is implemented and covered by regression
+> tests; `morph-app` taps two phones over NFC, opens a **Bluetooth + Wi-Fi
+> Direct** session, and lets either side become the sender from the same
+> Receive card. Files are saved to `Downloads/MORPH` with X25519 +
+> AES-256-GCM and shown in a system overlay.
 
 ## Install
 
@@ -75,16 +76,33 @@ full-screen activity, so the app underneath keeps running.
 
 ## Transport
 
-v1.0.0 ships a working path. Tap two phones to hand off the address without
-picking a device: MORPH emulates a Type-4 NDEF tag over HCE
-(AID `D2760000850101`) containing `MORPH/1`, model, IP, TCP port and shell_id.
-The other phone reads it, opens the file picker and connects directly. Both
-phones still need to be on the same Wi-Fi for the payload transfer.
+v1.1.0 ships the full tap flow. Touch two phones: MORPH emulates a Type-4
+NDEF tag over HCE (AID `D2760000850101`) containing `MORPH/1`, model, IP, TCP
+port, shell_id and a per-tap session id. Both phones then:
+
+- open a **Bluetooth LE** control channel — the tag owner advertises a GATT
+  service whose UUID is derived from the NFC session id, the reader scans and
+  connects;
+- start **Wi-Fi Direct** with DNS-SD, keyed by the same session id; the group
+  owner runs the TCP listener and the P2P client dials it;
+- show the same **Receive** card with a **SEND FILES** button.
+
+The first side to press SEND FILES becomes the sender; the other side
+automatically switches to receiving. A simultaneous claim is resolved
+deterministically (the NFC reader wins). If Bluetooth or Wi-Fi Direct
+permissions/hardware are unavailable, the session falls back to direct TCP on
+the local network, but the role choice stays the same.
 
 The data path itself:
 
 ```
-mDNS (_morph._tcp) -> peer list          (NSD on Android)
+NFC tap            -> session id + IP/port/shell       (HCE Type-4 NDEF)
+BLE GATT           -> presence + role claim             (session UUID)
+Wi-Fi Direct       -> DNS-SD + P2P group               (group owner dials)
+MORPH/1 HELLO      -> session id, device id, role hint  (line protocol)
+SEND / ROLE R      -> who sends
+FILE               -> picker returned, then DROP/1 starts
+mDNS (_morph._tcp) -> LAN fallback peer list            (NSD on Android)
 TCP :44771         -> DropLink session
 HELLO              -> X25519 public keys
 CAPS               -> shell_id, flags, MTU
@@ -96,8 +114,8 @@ DONE / ACK         -> manifest hash verified, file finalized
 Received files land in `Downloads/MORPH` through MediaStore, so they survive
 reboots and show up in Files. The card shows real bytes/percent, not a timer.
 
-BLE control and Wi-Fi Direct/Aware bulk transfer from [`PROTOCOL.md`](docs/PROTOCOL.md)
-remain planned for a future release; the current transport is mDNS + direct TCP.
+The old mDNS + direct TCP path remains as the fallback when BLE/Wi-Fi Direct
+are unavailable, and is still used for manually selected nearby devices.
 
 ### Self-test
 

@@ -3,6 +3,8 @@ package io.morph.app
 import android.nfc.cardemulation.HostApduService
 import android.content.Intent
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import androidx.core.content.ContextCompat
 import java.nio.ByteBuffer
@@ -32,6 +34,13 @@ class MorphNdefService : HostApduService() {
     }
 
     override fun processCommandApdu(commandApdu: ByteArray, extras: Bundle?): ByteArray {
+        // The first APDU means another phone is physically reading our tag.
+        // Announce the tap on this side too, so both phones raise the role card.
+        if (!announced) {
+            announced = true
+            runCatching { MorphEngine.onHostTap(applicationContext) }
+                .onFailure { Log.w("MORPH", "host tap failed", it) }
+        }
         Log.d("MORPH", "APDU IN: ${hex(commandApdu)}")
         val response = try {
             if (commandApdu.size < 4) {
@@ -52,8 +61,17 @@ class MorphNdefService : HostApduService() {
     }
 
     override fun onDeactivated(reason: Int) {
-        // Some readers toggle the field between APDU chains. Keeping the
-        // selected file is required or the following READ BINARY fails.
+        // Some readers toggle the field between APDU chains, so do not rotate
+        // immediately. Once the field is really gone and no session is active,
+        // arm a fresh session id for the next tap.
+        Handler(Looper.getMainLooper()).postDelayed({
+            if (!MorphEngine.hasActiveNfcSession()) {
+                NfcHandoff.rotateHostSession()
+            }
+            // Always allow the next physical tap to announce again, even if
+            // the previous session is still finishing its transfer.
+            announced = false
+        }, 1_500)
     }
 
     private fun select(apdu: ByteArray): ByteArray {
@@ -156,6 +174,7 @@ class MorphNdefService : HostApduService() {
         byteArrayOf(sw1.toByte(), sw2.toByte())
 
     private var selected: Selected = Selected.NONE
+    private var announced = false
 
     private enum class Selected { NONE, AID, CC, NDEF }
 

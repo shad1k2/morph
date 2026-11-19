@@ -1,7 +1,6 @@
 package io.morph.app
 
 import android.content.Intent
-import android.net.Uri
 import android.nfc.NdefMessage
 import android.nfc.NfcAdapter
 import android.nfc.Tag
@@ -33,17 +32,18 @@ class NfcHandoffActivity : ComponentActivity() {
         val tag = intent.getParcelableExtra<Tag>(NfcAdapter.EXTRA_TAG)
         val fromTag = runCatching { Ndef.get(tag)?.cachedNdefMessage }.getOrNull()
 
-        val peer = NfcHandoff.decodeUri(intent.data)
+        val tap = NfcHandoff.decodeUri(intent.data)
             ?: NfcHandoff.decodeMessage(fromExtras ?: fromTag)
 
         Log.d(
             "MORPH",
             "NFC handoff intent: ${intent.action} data=${intent.data} " +
-                "records=${(fromExtras ?: fromTag)?.records?.size ?: 0} peer=${peer?.name}",
+                "records=${(fromExtras ?: fromTag)?.records?.size ?: 0} peer=${tap?.peer?.name} " +
+                "session=${tap?.sessionId}",
         )
 
-        if (peer != null) {
-            MorphEngine.showNfcReady(this, peer)
+        if (tap != null) {
+            MorphEngine.onGuestTap(this, tap)
             if (Settings.canDrawOverlays(this)) {
                 // Let the trampoline finish before raising the overlay; avoids
                 // the HIDE/SHOW race with the engine's publish().

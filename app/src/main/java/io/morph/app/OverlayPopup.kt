@@ -72,7 +72,7 @@ fun OverlayPopup(
                 MonoLabel(
                     when {
                         drop.kind == DropKind.READY ->
-                            if (drop.mode == "SEND") "SEND MODE · NFC TAP" else "RECEIVE MODE"
+                            if (drop.mode == "SEND") "SEND MODE · NFC TAP" else "RECEIVE · NFC TAP"
                         incoming && phase == TransferPhase.PROMPT -> "INCOMING DROP"
                         incoming && phase == TransferPhase.RUNNING -> "RECEIVING"
                         incoming -> "TRANSFER COMPLETE"
@@ -90,7 +90,7 @@ fun OverlayPopup(
                             if (drop.mode == "SEND") {
                                 if (theme.uppercaseHeadline) "DROP READY" else "Drop ready"
                             } else {
-                                if (theme.uppercaseHeadline) "READY TO RECEIVE" else "Ready to receive"
+                                if (theme.uppercaseHeadline) "RECEIVE" else "Receive"
                             }
                         incoming && phase == TransferPhase.PROMPT ->
                             if (theme.uppercaseHeadline) "DROP READY" else "Drop ready"
@@ -239,14 +239,14 @@ private fun ReadyRow(theme: ShellTheme, sending: Boolean) {
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
             Text(
-                if (sending) "Choose a file to send" else "Waiting for an incoming file",
+                if (sending) "Choose a file to send" else "Waiting for the other phone",
                 color = theme.text,
                 fontFamily = theme.body ?: FontFamily.Default,
                 fontWeight = FontWeight.Medium,
                 fontSize = 13.sp,
             )
             Text(
-                if (sending) "Tap SEND FILE below" else "The sender picks a file in their pop-up",
+                if (sending) "Tap SEND FILES below" else "Tap SEND FILES to send instead",
                 color = theme.dim,
                 fontFamily = FontFamily.Monospace,
                 fontSize = 9.sp,
