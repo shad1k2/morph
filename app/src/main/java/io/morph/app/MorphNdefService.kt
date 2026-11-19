@@ -120,14 +120,23 @@ class MorphNdefService : HostApduService() {
         return response.array()
     }
 
+    /**
+     * Type 4 Tag capability container (NFC Forum T4T v2.0), 15 bytes:
+     * CCLEN, mapping version, MLe, MLc and the NDEF File Control TLV.
+     * Without the TLV a reader cannot discover E104 and the tap silently fails.
+     */
     private fun ccFile(): ByteArray {
         val max = minOf(ndefFile().size, 0xFFFF)
         return byteArrayOf(
-            0x00, 0x0F,             // CC length (15 bytes)
-            0x10, 0x00,             // major 1.0
-            (max shr 8).toByte(), max.toByte(),
-            0x00, 0x00,             // NDEF file always readable / writable
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x0F,             // CCLEN = 15
+            0x20,                   // mapping version 2.0
+            0x00, 0x3B,             // MLe = 59 bytes (max R-APDU data)
+            0x00, 0x34,             // MLc = 52 bytes (max C-APDU data)
+            0x04, 0x06,             // NDEF File Control TLV
+            0xE1.toByte(), 0x04,    // NDEF file id = E104
+            (max shr 8).toByte(), max.toByte(), // max NDEF file size
+            0x00,                   // read access granted
+            0xFF.toByte(),          // write access denied (we are read-only)
         )
     }
 

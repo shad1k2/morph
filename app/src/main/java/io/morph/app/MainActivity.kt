@@ -48,7 +48,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
@@ -70,8 +69,6 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, false)
-        window.statusBarColor = Color.Transparent.toArgb()
-        window.navigationBarColor = Color.Transparent.toArgb()
         setContent { MorphRoot(nfcPeer, nfcDebug) { nfcPeer = null } }
 
         if (intent?.getBooleanExtra(EXTRA_ASK_OVERLAY, false) == true) {
@@ -83,6 +80,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        setIntent(intent)
         handleNfcIntent(intent)
     }
 
@@ -250,7 +248,6 @@ private fun MorphRoot(
                 Screen.SETTINGS -> SettingsScreen(
                     theme = theme,
                     detected = detected,
-                    shell = shell,
                     onSelectShell = {
                         shell = it
                         ThemePrefs.save(context, it)
@@ -263,7 +260,7 @@ private fun MorphRoot(
                     engineRunning = MorphEngine.running,
                     localPort = MorphEngine.port,
                     selfTest = MorphEngine.selfTest,
-                    onSelfTest = { MorphEngine.runSelfTest(context) },
+                    onSelfTest = { MorphEngine.runSelfTest() },
                     onE2E = { MorphEngine.runE2E(context) },
                     onRestartDiscovery = {
                         startReceiving(context)

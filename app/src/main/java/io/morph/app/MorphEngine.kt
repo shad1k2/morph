@@ -85,6 +85,15 @@ object MorphEngine {
     private const val SERVICE_TYPE = "_morph._tcp"
     private const val TAG_NAME = "MORPH-"
 
+    /**
+     * Two phones of the same model would otherwise advertise the exact same
+     * mDNS instance name. Android then reports only one of them, and each
+     * phone filters the other out as "self". The random suffix makes the
+     * instance unique; the UI still shows the plain model name.
+     */
+    private val instanceTag: String = "%04X".format(Random().nextInt(0x10000))
+    private val ownServiceName: String by lazy { TAG_NAME + deviceName() + "-" + instanceTag }
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     val peers = mutableStateListOf<Peer>()
@@ -149,11 +158,15 @@ object MorphEngine {
 
         try {
             val socket = try {
-                ServerSocket(Protocol.WIFI_PORT)
+                // SO_REUSEADDR must be set before bind, otherwise a quick
+                // stop/start cycle can fail with "Address already in use".
+                ServerSocket().apply {
+                    reuseAddress = true
+                    bind(InetSocketAddress(Protocol.WIFI_PORT))
+                }
             } catch (t: IOException) {
                 ServerSocket(0)
             }
-            socket.reuseAddress = true
             serverSocket = socket
             localPort = socket.localPort
             acquireMulticast(ctx)
@@ -185,11 +198,18 @@ object MorphEngine {
     fun refreshDiscovery() {
         val ctx = appContext ?: return
         val manager = nsd ?: return
-        val old = discovery ?: return
-        runCatching { manager.stopServiceDiscovery(old) }
+        val old = discovery
+        discovery = null
         peers.clear()
         resolved.clear()
-        startDiscovery(ctx, manager)
+        // stopServiceDiscovery() is asynchronous. Starting immediately often
+        // fails with FAILURE_ALREADY_ACTIVE and leaves discovery dead until
+        // the process restarts, so give the framework a moment to settle.
+        scope.launch {
+            if (old != null) runCatching { manager.stopServiceDiscovery(old) }
+            delay(400)
+            if (running) startDiscovery(ctx, manager)
+        }
     }
 
     /** Pop-up after an NFC tap: the other phone is known, pick what to send. */
@@ -267,7 +287,7 @@ object MorphEngine {
                     )
                 )
 
-                transfer(ctx, peer.name, peer.host, peer.port, prepared)
+                transfer(peer.name, peer.host, peer.port, prepared)
 
                 publish(
                     ctx,
@@ -292,7 +312,6 @@ object MorphEngine {
 
     /** One SENDER-side DROP/1 conversation over a real TCP socket. */
     private fun transfer(
-        ctx: Context,
         peerName: String,
         host: String,
         port: Int,
@@ -315,7 +334,7 @@ object MorphEngine {
 
             prepared.file.inputStream().use { input ->
                 link.sendFile(entry, input) { sent ->
-                    progress(ctx, sent.toFloat() / prepared.size.coerceAtLeast(1))
+                    progress(sent.toFloat() / prepared.size.coerceAtLeast(1))
                 }
             }
 
@@ -340,7 +359,6 @@ object MorphEngine {
             try {
                 selfTest = "E2E: advertising and discovering…"
                 lastSaved = null
-                val ownName = TAG_NAME + deviceName()
                 val waiter = CompletableDeferred<Peer>()
                 selfPeer = waiter
                 includeSelfInDiscovery = true
@@ -368,7 +386,7 @@ object MorphEngine {
                     ctx,
                     DropUi(
                         kind = DropKind.OUTGOING,
-                        peerName = ownName.removePrefix(TAG_NAME) + " (self)",
+                        peerName = deviceName() + " (self)",
                         shell = ThemePrefs.selected(ctx),
                         fileName = name,
                         sizeLabel = formatBytes(size.toLong()),
@@ -376,7 +394,7 @@ object MorphEngine {
                     )
                 )
 
-                transfer(ctx, peer.name, peer.host, peer.port, prepared)
+                transfer(peer.name, peer.host, peer.port, prepared)
 
                 trace("E2E: transfer returned")
                 val saved = withTimeoutOrNull(8_000) {
@@ -425,6 +443,9 @@ object MorphEngine {
     }
 
     private suspend fun handleIncoming(ctx: Context, socket: Socket) {
+        // A MediaStore entry created with IS_PENDING=1 stays invisible until it
+        // is finalized; if the transfer dies halfway it must be removed.
+        var pendingDownload: Uri? = null
         try {
             socket.soTimeout = 30_000
             val link = DropLink(socket.getInputStream(), socket.getOutputStream(), Role.RECEIVER)
@@ -491,18 +512,20 @@ object MorphEngine {
 
             trace("IN: creating Downloads entry")
             val target = createDownload(ctx, file)
+            pendingDownload = target
             val sink: OutputStream = ctx.contentResolver.openOutputStream(target)
                 ?: throw IOException("cannot open Downloads")
 
             trace("IN: sink open, reading chunks")
             val hash = sink.use { out ->
                 link.receiveFile(file, out) { written ->
-                    progress(ctx, written.toFloat() / file.size.coerceAtLeast(1))
+                    progress(written.toFloat() / file.size.coerceAtLeast(1))
                 }
             }
             trace("IN: chunks done, hash=${hash.joinToString("") { "%02X".format(it) }.take(12)}")
-            finalizeDownload(ctx, target)
 
+            // Verify before publishing the entry, otherwise a corrupt file
+            // becomes visible in Downloads.
             if (!hash.contentEquals(file.sha256)) {
                 link.abort()
                 throw IOException("hash mismatch")
@@ -512,6 +535,8 @@ object MorphEngine {
                 throw IOException("manifest mismatch")
             }
             trace("IN: DONE verified")
+            finalizeDownload(ctx, target)
+            pendingDownload = null
             link.ack()
             trace("IN: ACK written")
 
@@ -521,6 +546,9 @@ object MorphEngine {
             delay(1800)
             publish(ctx, null)
         } catch (t: Throwable) {
+            pendingDownload?.let { uri ->
+                runCatching { ctx.contentResolver.delete(uri, null, null) }
+            }
             Log.w("MORPH", "IN transfer failed", t)
             val message = friendly(t)
             lastError = message
@@ -551,7 +579,7 @@ object MorphEngine {
         }
     }
 
-    private fun progress(ctx: Context, fraction: Float) {
+    private fun progress(fraction: Float) {
         val current = drop ?: return
         val next = fraction.coerceIn(0f, 1f)
         if (next - current.progress < 0.01f && next < 1f) return
@@ -565,7 +593,7 @@ object MorphEngine {
         nsd = manager
 
         val info = NsdServiceInfo().apply {
-            serviceName = TAG_NAME + deviceName()
+            serviceName = ownServiceName
             serviceType = SERVICE_TYPE
             port = localPort
             setAttribute("shell", ShellDetector.detect().code.toString())
@@ -590,7 +618,10 @@ object MorphEngine {
     }
 
     private fun startDiscovery(ctx: Context, manager: NsdManager) {
-        val listener = object : NsdManager.DiscoveryListener {
+        var retries = 0
+        // Assigned right below; the callbacks only read it after that.
+        lateinit var listener: NsdManager.DiscoveryListener
+        listener = object : NsdManager.DiscoveryListener {
             override fun onDiscoveryStarted(serviceType: String) {
                 status = "Scanning for nearby phones…"
             }
@@ -598,7 +629,7 @@ object MorphEngine {
             override fun onServiceFound(serviceInfo: NsdServiceInfo) {
                 val name = serviceInfo.serviceName ?: return
                 if (!name.startsWith(TAG_NAME)) return
-                if (name == TAG_NAME + deviceName() && !includeSelfInDiscovery) return
+                if (name == ownServiceName && !includeSelfInDiscovery) return
                 resolve(manager, serviceInfo)
             }
 
@@ -611,6 +642,16 @@ object MorphEngine {
             override fun onDiscoveryStopped(serviceType: String) = Unit
             override fun onStartDiscoveryFailed(serviceType: String, errorCode: Int) {
                 lastError = "Discovery failed ($errorCode)"
+                // A previous stop is still in flight; retry once it settles.
+                if (errorCode == NsdManager.FAILURE_ALREADY_ACTIVE &&
+                    discovery === listener && retries < 3
+                ) {
+                    retries++
+                    scope.launch {
+                        delay(600)
+                        if (running && discovery === listener) startDiscovery(ctx, manager)
+                    }
+                }
             }
 
             override fun onStopDiscoveryFailed(serviceType: String, errorCode: Int) = Unit
@@ -619,6 +660,9 @@ object MorphEngine {
         runCatching { manager.discoverServices(SERVICE_TYPE, NsdManager.PROTOCOL_DNS_SD, listener) }
     }
 
+    // resolveService is deprecated in API 34 in favour of registerServiceInfoCallback,
+    // but the callback API is unavailable on our minSdk and the old call still works.
+    @Suppress("DEPRECATION")
     private fun resolve(manager: NsdManager, info: NsdServiceInfo) {
         manager.resolveService(info, object : NsdManager.ResolveListener {
             override fun onResolveFailed(serviceInfo: NsdServiceInfo, errorCode: Int) = Unit
@@ -630,20 +674,22 @@ object MorphEngine {
                     ?.toString(Charsets.UTF_8)
                     ?.toIntOrNull()
                     ?: ShellId.UNKNOWN.code
+                val displayName = serviceInfo.attributes["model"]
+                    ?.toString(Charsets.UTF_8)
+                    ?.takeIf { it.isNotBlank() }
+                    ?: name.removePrefix(TAG_NAME).substringBeforeLast('-')
                 val peer = Peer(
                     id = name,
-                    name = name.removePrefix(TAG_NAME),
+                    name = displayName,
                     host = host,
                     port = serviceInfo.port,
                     shell = ShellId.from(shellCode),
                 )
                 resolved[name] = peer
+                val self = name == ownServiceName
                 val index = peers.indexOfFirst { it.id == name }
-                if (index >= 0) peers[index] = peer else {
-                    val self = name == TAG_NAME + deviceName()
-                    if (!self) peers.add(peer)
-                }
-                if (name == TAG_NAME + deviceName()) {
+                if (index >= 0) peers[index] = peer else if (!self) peers.add(peer)
+                if (self) {
                     selfPeer?.complete(peer)
                 }
             }
@@ -693,7 +739,7 @@ object MorphEngine {
     private fun createDownload(ctx: Context, file: FileEntry): Uri {
         val resolver = ctx.contentResolver
         val values = ContentValues().apply {
-            put(MediaStore.MediaColumns.DISPLAY_NAME, uniqueName(file.name))
+            put(MediaStore.MediaColumns.DISPLAY_NAME, uniqueName(safeDisplayName(file.name)))
             put(MediaStore.MediaColumns.MIME_TYPE, file.mime.ifBlank { "application/octet-stream" })
             put(
                 MediaStore.MediaColumns.RELATIVE_PATH,
@@ -712,6 +758,28 @@ object MorphEngine {
         runCatching { ctx.contentResolver.update(uri, values, null, null) }
     }
 
+    /**
+     * The sender controls the offered file name. Never let it escape
+     * Downloads/MORPH or smuggle path separators / control characters into
+     * MediaStore.
+     */
+    private fun safeDisplayName(name: String): String {
+        val cleaned = name
+            .substringAfterLast('/')
+            .substringAfterLast('\\')
+            .replace(Regex("[\\u0000-\\u001F\\u007F]"), "_")
+            .trim()
+            .trimEnd('.')
+        val base = cleaned.takeIf { it.isNotEmpty() && it != "." && it != ".." } ?: "file"
+        if (base.length <= 120) return base
+        val dot = base.lastIndexOf('.')
+        return if (dot > 0 && base.length - dot <= 16) {
+            base.take(120 - (base.length - dot)) + base.substring(dot)
+        } else {
+            base.take(120)
+        }
+    }
+
     private fun uniqueName(name: String): String {
         val stamp = System.currentTimeMillis().toString().takeLast(6)
         val dot = name.lastIndexOf('.')
@@ -724,8 +792,7 @@ object MorphEngine {
 
     // ------------------------------------------------------------- self-test
 
-    fun runSelfTest(context: Context) {
-        val ctx = context.applicationContext
+    fun runSelfTest() {
         scope.launch {
             withContext(Dispatchers.Main) { selfTest = "Running loopback…" }
             val server = try {

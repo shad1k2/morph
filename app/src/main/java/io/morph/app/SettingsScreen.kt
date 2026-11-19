@@ -34,7 +34,6 @@ import io.morph.core.ShellId
 fun SettingsScreen(
     theme: ShellTheme,
     detected: ShellId,
-    shell: ShellId,
     onSelectShell: (ShellId) -> Unit,
     onBack: () -> Unit,
     overlayEnabled: Boolean,
@@ -353,7 +352,7 @@ fun SettingsScreen(
                 .shellSurface(theme, RoundedCornerShape(theme.radius))
                 .padding(18.dp)
         ) {
-            ProtocolLine("Spec", "DROP/1 · v0.6.5", theme)
+            ProtocolLine("Spec", "DROP/1 · v${BuildConfig.VERSION_NAME}", theme)
             ProtocolLine("Handshake", "X25519 → HKDF-SHA256", theme)
             ProtocolLine("Payload", "AES-256-GCM", theme)
             ProtocolLine("Relay", "none · direct only", theme)
@@ -367,7 +366,7 @@ fun SettingsScreen(
         }
 
         Spacer(Modifier.height(22.dp))
-        MonoLabel("MORPH APP v0.6.5 · WORKING BUILD", theme.dim, size = 8, tracking = 1.1f)
+        MonoLabel("MORPH APP v${BuildConfig.VERSION_NAME} · RELEASE", theme.dim, size = 8, tracking = 1.1f)
         Spacer(Modifier.height(24.dp))
     }
 }

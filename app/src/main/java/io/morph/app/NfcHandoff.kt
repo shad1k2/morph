@@ -73,7 +73,7 @@ object NfcHandoff {
         val parts = String(record.payload, Charsets.UTF_8).split('\n')
         if (parts.size < 5 || parts[0] != MARKER) return null
 
-        val port = parts[3].toIntOrNull() ?: return null
+        val port = parts[3].toIntOrNull()?.takeIf { it in 1..65535 } ?: return null
         val shellCode = parts[4].toIntOrNull() ?: return null
         if (parts[1].isBlank() || parts[2].isBlank()) return null
 
@@ -87,9 +87,9 @@ object NfcHandoff {
     }
 
     fun decodeUri(uri: Uri?): Peer? {
-        if (uri == null || uri.scheme != "morph") return null
-        val host = uri.getQueryParameter("h") ?: return null
-        val port = uri.getQueryParameter("p")?.toIntOrNull() ?: return null
+        if (uri == null || uri.scheme != "morph" || uri.authority != "drop") return null
+        val host = uri.getQueryParameter("h")?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        val port = uri.getQueryParameter("p")?.toIntOrNull()?.takeIf { it in 1..65535 } ?: return null
         val name = uri.getQueryParameter("n")?.let { decode(it) } ?: "Nearby device"
         val shell = uri.getQueryParameter("s")?.toIntOrNull()
             ?: io.morph.core.ShellId.UNKNOWN.code
@@ -107,26 +107,40 @@ object NfcHandoff {
 
     fun localAddress(context: Context): String {
         @Suppress("DEPRECATION")
-        val ip = try {
-            val wifi = context.getSystemService(android.net.wifi.WifiManager::class.java)
-            wifi?.connectionInfo?.ipAddress ?: 0
-        } catch (t: Throwable) {
-            0
-        }
-        if (ip != 0) {
-            return String.format(
-                Locale.US,
-                "%d.%d.%d.%d",
-                ip and 0xFF,
-                (ip shr 8) and 0xFF,
-                (ip shr 16) and 0xFF,
-                (ip shr 24) and 0xFF,
-            )
-        }
-        return NetworkInterface.getNetworkInterfaces()?.toList()
-            ?.flatMap { it.inetAddresses.toList() }
-            ?.firstOrNull { !it.isLoopbackAddress && it.hostAddress.contains('.') }
-            ?.hostAddress
-            ?: "127.0.0.1"
+        val legacyIp = runCatching {
+            context.getSystemService(android.net.wifi.WifiManager::class.java)
+                ?.connectionInfo?.ipAddress ?: 0
+        }.getOrDefault(0)
+        if (legacyIp != 0) return formatIpv4(legacyIp)
+
+        // Prefer a site-local IPv4 address on a Wi-Fi-like interface. Picking
+        // the first non-loopback address can hand out mobile data or VPN.
+        val addresses = runCatching {
+            NetworkInterface.getNetworkInterfaces()?.toList().orEmpty()
+                .filter { runCatching { it.isUp && !it.isLoopback }.getOrDefault(false) }
+                .flatMap { iface ->
+                    iface.inetAddresses.toList()
+                        .filterIsInstance<java.net.Inet4Address>()
+                        .map { iface.name.lowercase(Locale.US) to it }
+                }
+        }.getOrDefault(emptyList())
+
+        val chosen = addresses.firstOrNull { (ifName, addr) ->
+            addr.isSiteLocalAddress && WIFI_PREFIXES.any { ifName.startsWith(it) }
+        } ?: addresses.firstOrNull { (_, addr) -> addr.isSiteLocalAddress }
+            ?: addresses.firstOrNull()
+
+        return chosen?.second?.hostAddress ?: "127.0.0.1"
     }
+
+    private val WIFI_PREFIXES = listOf("wlan", "ap", "wifi", "swlan")
+
+    private fun formatIpv4(ip: Int): String = String.format(
+        Locale.US,
+        "%d.%d.%d.%d",
+        ip and 0xFF,
+        (ip shr 8) and 0xFF,
+        (ip shr 16) and 0xFF,
+        (ip shr 24) and 0xFF,
+    )
 }

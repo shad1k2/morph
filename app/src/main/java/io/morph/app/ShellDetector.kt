@@ -6,8 +6,8 @@ import io.morph.core.ShellId
 /** Detects the local shell; see docs/THEMES.md. */
 object ShellDetector {
     fun detect(): ShellId {
-        val manufacturer = Build.MANUFACTURER.lowercase()
-        val brand = Build.BRAND.lowercase()
+        val manufacturer = Build.MANUFACTURER.lowercase(java.util.Locale.US)
+        val brand = Build.BRAND.lowercase(java.util.Locale.US)
         return when {
             brand.contains("nothing") || prop("ro.nothing.build.version") != null -> ShellId.NOTHING_OS
             manufacturer.contains("xiaomi") || prop("ro.miui.ui.version.name") != null -> ShellId.HYPEROS
